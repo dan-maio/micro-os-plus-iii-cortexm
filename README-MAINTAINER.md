@@ -20,13 +20,13 @@ git clone \
   ~/Work/micro-os-plus/micro-os-plus-iii-cortexm.git
 ```
 
-For development purposes, clone the `xpack-develop` branch:
+For development purposes, clone the `xpack-development` branch:
 
 ```sh
 rm -rf ~/Work/micro-os-plus/micro-os-plus-iii-cortexm.git && \
 mkdir -p ~/Work/xpack-3rd-party && \
 git clone \
-  --branch xpack-develop \
+  --branch xpack-development \
   https://github.com/micro-os-plus/micro-os-plus-iii-cortexm.git \
   ~/Work/micro-os-plus/micro-os-plus-iii-cortexm.git
 ```
@@ -46,7 +46,7 @@ There are no fixed releases, the project aims to follow the upstream releases.
 
 In the `micro-os-plus/micro-os-plus-iii-cortexm` Git repo:
 
-- switch to the `xpack-develop` branch
+- switch to the `xpack-development` branch
 - if needed, merge the `xpack` branch
 
 No need to add a tag here, it'll be added when the release is created.
@@ -86,14 +86,14 @@ related to the new version:
 
 ### Commit the new version
 
-- select the `xpack-develop` branch
+- select the `xpack-development` branch
 - commit all changes
 - `npm pack` and check the content of the archive, which should list
   only `package.json`, `README.md`, `LICENSE`, `CHANGELOG.md`,
   the `doxygen-awesome-*.js` and `doxygen-custom/*` files;
   possibly adjust `.npmignore`
 - `npm version 1.0.0`
-- push the `xpack-develop` branch to GitHub
+- push the `xpack-development` branch to GitHub
 - the `postversion` npm script should also update tags via `git push origin --tags`
 
 ### Update the repo
@@ -101,6 +101,6 @@ related to the new version:
 When the package is considered stable:
 
 - with a Git client (VS Code is fine)
-- merge `xpack-develop` into `xpack`
+- merge `xpack-development` into `xpack`
 - push to GitHub
-- select `xpack-develop`
+- select `xpack-development`
