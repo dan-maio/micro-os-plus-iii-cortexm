@@ -41,11 +41,13 @@
 #endif
 
 #if !defined(OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES)
-#define OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES (OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES)
+#define OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES \
+  (OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES)
 #endif
 
 #if !defined(OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES)
-#define OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES (OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES)
+#define OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES \
+  (OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES)
 #endif
 
 // ----------------------------------------------------------------------------
@@ -56,7 +58,7 @@
 
 // ----------------------------------------------------------------------------
 
-#ifdef  __cplusplus
+#ifdef __cplusplus
 
 #include <cstdint>
 #include <cstddef>
@@ -78,15 +80,16 @@ namespace os
         using allocation_element_t = os_port_thread_stack_allocation_element_t;
 
         // Initial value for the minimum stack size in bytes.
-        constexpr std::size_t min_size_bytes =
-        OS_INTEGER_RTOS_MIN_STACK_SIZE_BYTES;
+        constexpr std::size_t min_size_bytes
+            = OS_INTEGER_RTOS_MIN_STACK_SIZE_BYTES;
 
         // Initial value for the default stack size in bytes.
-        constexpr std::size_t default_size_bytes =
-        OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES;
+        constexpr std::size_t default_size_bytes
+            = OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES;
 
         // Used to fill in the stack.
-        constexpr element_t magic = OS_INTEGER_RTOS_STACK_FILL_MAGIC; // DEADBEEF
+        constexpr element_t magic
+            = OS_INTEGER_RTOS_STACK_FILL_MAGIC; // DEADBEEF
 
       } /* namespace stack */
 
@@ -118,13 +121,13 @@ namespace os
       } /* namespace scheduler */
 
       using thread_context_t = struct context_s
-        {
-          // On Cortex-M cores the context itself is stored on the stack,
-          // only the stack pointer needs to be preserved.
-          stack::element_t* stack_ptr;
-        };
+      {
+        // On Cortex-M cores the context itself is stored on the stack,
+        // only the stack pointer needs to be preserved.
+        stack::element_t* stack_ptr;
+      };
 
-    // ----------------------------------------------------------------------
+      // ----------------------------------------------------------------------
 
     } /* namespace port */
   } /* namespace rtos */
