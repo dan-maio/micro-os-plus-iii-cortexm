@@ -22,6 +22,7 @@
 #include <cassert>
 
 #include <cmsis-plus/rtos/os.h>
+#include <cmsis-plus/diag/instrumentation.h>
 
 #include <cmsis-plus/cortexm/exception-handlers.h>
 
@@ -574,6 +575,11 @@ namespace os
 #if defined(OS_TRACE_RTOS_THREAD_CONTEXT)
           trace::printf ("port::scheduler::%s()\n", __func__);
 #endif
+
+          instrumentation::scheduler::reschedule();
+
+          os::rtos::scheduler::is_reschedule_pending = true;
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
           // Set PendSV to request a context switch.
@@ -816,6 +822,9 @@ namespace os
           // This shouldn't be a problem for this scheduler,
           // but without it the semaphore stress test sometimes fails
           // on debug, so better safe than sorry.
+
+          os::rtos::scheduler::is_reschedule_pending = false;
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
           SCB->ICSR = SCB_ICSR_PENDSVCLR_Msk;
