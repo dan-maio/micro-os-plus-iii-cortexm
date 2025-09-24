@@ -6,9 +6,15 @@ Please check
 [GitHub](https://github.com/micro-os-plus/micro-os-plus-iii-cortexm/issues)
 and close existing issues and pull requests.
 
+## 2025-09-24
+
+* v1.1.0
+* 901e3d7 set & use Optimise is_reschedule_pending
+
 ## 2025-08-24
 
-* v1.0.1
+* a1dd28d 1.0.1
+* c8e6702 prepare v1.0.1
 * 9e595b4 rename xpack-development
 * b81c95c add .clang-format and re-format
 * b9b53eb update copyright notices
