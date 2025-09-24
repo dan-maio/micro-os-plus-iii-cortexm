@@ -77,8 +77,8 @@ related to the new version:
 
 - open the `CHANGELOG.md` file
 - check if all previous fixed issues are in
-- add a new entry like _* v1.0.1_
-- commit with a message like _prepare v1.0.1_
+- add a new entry like _* v1.1.0_
+- commit with a message like _prepare v1.1.0_
 
 ### Push changes
 
