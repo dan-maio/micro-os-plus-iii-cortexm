@@ -1,17 +1,34 @@
-.DS_Store
-.settings/
-.yotta.json
-Thumbs.db
-build/
-Debug/
-Release/
-test-*/
-upload.tar.gz
-yotta_modules/
-yotta_targets/
+# Build trees
+# build*/ , not build/ + build-*/ : a directory named build15 or
+# buildgcc14 slipped through the narrower pair and got committed once.
+build*/
+test/build*/
+cmake-build*/
+test/build*/
+output/
+target/
 
-node_modules/
-xpacks/
-*.tgz
+# Objects and images
+*.o
+*.obj
+*.d
+*.a
+*.elf
+*.hex
+*.bin
+*.lst
+*.map
+*.su
+
+# Test-run scratch
+.hw-run*
+.hw-jlink-run*
+.qemu-verify/
+**/disk*.img
+
+# Editors / OS
+*.swp
+*~
 .vscode/
-
+.idea/
+.DS_Store

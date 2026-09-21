@@ -1,206 +1,69 @@
-[![GitHub package.json version](https://img.shields.io/github/package-json/v/micro-os-plus/micro-os-plus-iii-cortexm)](https://github.com/micro-os-plus/micro-os-plus-iii-cortexm/blob/xpack/package.json)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/micro-os-plus/micro-os-plus-iii-cortexm)](https://github.com/micro-os-plus/micro-os-plus-iii-cortexm/tags/)
-[![license](https://img.shields.io/github/license/micro-os-plus/micro-os-plus-iii-cortexm)](https://github.com/micro-os-plus/micro-os-plus-iii-cortexm/blob/xpack/LICENSE)
+# micro-os-plus-iii-cortexm
 
-# A source code library with the µOS++ Cortex-M port (an xpm/npm package)
+The Cortex-M port of µOS++ III — the third architecture project, beside
+[`micro-os-plus-iii-aarch32`](../micro-os-plus-iii-aarch32) and
+[`micro-os-plus-iii-aarch64`](../micro-os-plus-iii-aarch64), built the same
+way and from the same kernel.
 
-This project provides support for running µOS++ on Cortex-M devices.
+## What is here
 
-The open-source project is hosted on GitHub as
-[micro-os-plus/micro-os-plus-iii-cortexm](https://github.com/micro-os-plus/micro-os-plus-iii-cortexm).
+```
+micro-os-plus-iii-cortexm/
+├── CMakeLists.txt
+├── include/cmsis-plus/rtos/port/    the port contract the kernel includes
+├── src/rtos/os-core.cpp             the ISA: PendSV, SysTick, critical sections
+└── test/
+    ├── CMakeLists.txt  hw.sh  qemu.sh
+    ├── boards/<id>/                 board.cmake, include/, src/, linker.ld,
+    │                                openocd.cfg, hw.sh
+    └── <id>/                        that board's test applications
+```
 
-## Maintainer info
+Three boards, all one Cortex-M4F:
 
-This page is addressed to developers who plan to include this source
-library into their own projects.
+| board | part | applications |
+|---|---|---|
+| `nucleof411` | STM32F411RE | `mos-test1` |
+| `weactf411` | STM32F411CE | `mos-test1`, `spi-pipeline` |
+| `weactf412` | STM32F412RE | `mos-test1`, `uart-test1` |
 
-For maintainer info, please see the
-[README-MAINTAINER](README-MAINTAINER.md) file.
+## Building
 
-## Install
-
-As a source code library, this project can be integrated into another project
-in the traditional way,
-by either copying the relevant files into the target project, or by linking
-the entire project as a Git submodule.
-
-However, the workflow can be further automated and the most convenient way is
-to **add it as a dependency** to the project via **xpm**.
-
-### Install with xpm/npm
-
-Along with the source files, this project also includes a
-`package.json` file with the metadata that allows it to be identified as an
-**xpm/npm** package that can be installed automatically as a dependency.
-
-#### Prerequisites
-
-A recent [xpm](https://xpack.github.io/xpm/),
-which is a portable [Node.js](https://nodejs.org/) command line application
-that complements [npm](https://docs.npmjs.com)
-with several extra features specific to
-**C/C++ projects**.
-
-It is recommended to install/update to the latest version with:
+Clone the two siblings beside this one, then:
 
 ```sh
-npm install --global xpm@latest
+cmake -S . -B test/build -G Ninja -DBOARD=nucleof411 \
+      -DCMAKE_TOOLCHAIN_FILE=../micro-os-plus-iii-smp/cmake/toolchains/arm-none-eabi.cmake
+cmake --build test/build -j
 ```
 
-For details please follow the instructions in the
-[xPack install](https://xpack.github.io/install/) page.
+## Running
 
-Warning: Be sure **xpm** is not installed with administrative/root rights.
-
-#### xpm
-
-This source code library can be installed as a sub-folder below `xpacks` with:
+Hardware only — all three boards are programmed over an ST-Link and run on
+the desk. OpenOCD does the whole job: program, enable semihosting, reset run.
+There is no GDB in this path and nothing is redirected.
 
 ```sh
-cd my-project
-xpm init # Add a package.json if not already present
-
-xpm install github:micro-os-plus/micro-os-plus-iii-cortexm#v1.0.1 --save-dev --copy
-
-ls -l xpacks/@micro-os-plus/micro-os-plus-iii-cortexm
+BOARD=nucleof411 ./test/hw.sh          # list what is built
+BOARD=nucleof411 ./test/hw.sh mos-test1
 ```
 
-Note: On Windows use `dir` and back-slashes.
+`test/qemu.sh` exists and answers honestly: none of these boards sets
+`UOS_BOARD_LINKER_QEMU`, so each builds one image per test rather than two,
+and the dispatcher points at `hw.sh`.
 
-#### npm
+## One CPU, and why that matters
 
-The package can also be installed with [npm](https://docs.npmjs.com)
-or related, but the content will end in the `node_modules` folder,
-along with JavaScript code;
-therefore it is recommended to install C/C++ packages via **xpm**.
+`src/rtos/os-core.cpp` is upstream's Cortex-M port, carried over unmodified.
+It is single-core, and on these three boards that is what runs: `OS_NCPU=1`,
+the kernel's SMP branches compile out, and **no kernel patch is applied**.
+That is exactly how the predecessor proved these boards, and it is what makes
+them the witness that the SMP port contract is optional rather than assumed.
 
-### Add as a Git submodule
-
-If, for any reason, xpm/npm are not available, it is always possible
-to manually copy the relevant files into the target
-project. However, this will need extra maintenance to keep the
-project up to date.
-
-A more convenient
-solution is to link the entire project as a **Git submodule**,
-for example below an `xpacks` folder:
-
-```sh
-cd my-project
-git init # Unless already a Git project
-mkdir -p xpacks
-
-git submodule add https://github.com/micro-os-plus/micro-os-plus-iii-cortexm.git \
-  xpacks/@micro-os-plus/micro-os-plus-iii-cortexm
-```
-
-## Branches
-
-Apart from the unused `master` branch, there are two active branches:
-
-- `xpack`, with the latest stable version (default)
-- `xpack-development`, with the current development version
-
-All development is done in the `xpack-development` branch, and contributions via
-Pull Requests should be directed to this branch.
-
-When new releases are published, the `xpack-development` branch is merged
-into `xpack`.
-
-## Developer info
-
-### Overview
-
-The µOS++ IIIe source code is split between a portable part
-and platform specific code (like Cortex-M, this project).
-Applications must include both.
-
-### Status
-
-The **micro-os-plus-iii-cortexm** source library is fully functional,
-but starting with mid 2023 it was marked as end-of-life and
-is not recommended for new designs.
-
-A new package will be available
-as part of µOS++ IVe.
-
-### Build & integration info
-
-The project is written in C/C++ and it is expected
-to be used in C and C++ projects.
-
-The source code was compiled with GCC 11/12, clang 12/13/14/15
-arm-none-eabi-gcc 12, and should be warning free.
-
-To ease the integration of this package into user projects, there
-are already made CMake configuration files (see below).
-
-For other build systems, consider the following details:
-
-#### Include folders
-
-The following folders should be passed to the compiler during the build:
-
-- `include`
-
-#### Source files
-
-The source files to be added to the build are:
-
-- `src/rtos/os-core.cpp`
-
-#### Preprocessor definitions
-
-- none
-
-#### Compiler options
-
-- `-std=c++20` or higher for C++ sources
-- `-std=c11` for C sources
-
-#### Dependencies
-
-- none
-
-#### CMake
-
-To integrate the **micro-os-plus-iii-cortexm** source library
-into a CMake application,
-add this folder to the build:
-
-```cmake
-add_subdirectory("xpacks/@micro-os-plus/micro-os-plus-iii-cortexm")`
-```
-
-The result is an interface library that can be added as an application
-dependency with:
-
-```cmake
-target_link_libraries(your-target PRIVATE
-
-  micro-os-plus::iii-cortexm
-)
-```
-
-### Examples
-
-- none
-
-### Known problems
-
-- none
-
-### Limitations
-
-- none
-
-### Tests
-
-- none
-
-## License
-
-Unless otherwise stated, the content is released under the terms of the
-[MIT License](https://opensource.org/licenses/mit/),
-with all rights reserved to
-[Liviu Ionescu](https://github.com/ilg-ul).
+The predecessor also has a dual-core Cortex-M SMP core, in its `pico2` tree.
+It is **not** portable Cortex-M SMP and cannot simply replace this file: its
+kernel lock is the RP2350's SIO hardware spinlock 0, its IPI is the SIO
+inter-core FIFO on IRQ 25, and its CPU id is `SIO_CPUID`. All three are
+silicon, not ISA — so in this layout they belong to a board, the way the
+Lyra's GIC-400 SGI and the Pi's do. `cortexm` will gain SMP by a board
+arriving that supplies a lock and an IPI, not by `os-core.cpp` changing.

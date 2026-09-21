@@ -1,0 +1,55 @@
+/*
+ * os-app-config.h — application configuration for the Nucleo-F411RE
+ * (STM32F411RE, Cortex-M4F) single-CPU build of micro-os-plus-iii.
+ *
+ * This is a bare Cortex-M4 target: the RTOS tick is driven by the core
+ * SysTick, context switches run in PendSV, and interrupts are managed by
+ * the NVIC (__NVIC_PRIO_BITS == 4 on STM32F4 -> priorities 0..15).
+ *
+ * Scheduler model: the shared micro-os-plus-iii *reference* scheduler runs on
+ * top of the upstream Cortex-M port's PendSV context switch (the port supplies
+ * port::scheduler / port::context; the kernel supplies the ready lists). This
+ * is the stock, single-CPU µOS++ Cortex-M configuration -- built against
+ * cortexm/'s kernel copy, patched like every copy; OS_USE_SMP_SCHEDULER is
+ * not defined here, so the patch's SMP branch compiles out. That is the
+ * concrete meaning of "one kernel, SMP and single-CPU". See ../PLAN.md.
+ *
+ * Note: OS_USE_RTOS_PORT_SCHEDULER is deliberately NOT defined. In this kernel
+ * that macro selects a full "RTOS port" mode (mapping RTOS objects onto an
+ * underlying RTOS, requiring os_*_port_data_t types the Cortex-M port does not
+ * provide) -- it is unrelated to PendSV context switching.
+ */
+
+#ifndef CMSIS_PLUS_OS_APP_CONFIG_H_
+#define CMSIS_PLUS_OS_APP_CONFIG_H_
+
+// ---- SysTick RTOS tick ----------------------------------------------------
+
+// 1000 Hz -> 1  tick == 1 ms, so sysclock.sleep_for(n) sleeps n milliseconds.
+// The port programs SysTick via SysTick_Config(SystemCoreClock / freq).
+#define OS_INTEGER_SYSTICK_FREQUENCY_HZ (1000)
+
+// ---- NVIC critical sections ----------------------------------------------
+
+// Interrupts with priority numerically >= this value are masked (BASEPRI)
+// inside RTOS critical sections; higher-priority (lower-number) IRQs stay
+// live. Must be in 1..15 for __NVIC_PRIO_BITS == 4. SysTick/PendSV are set
+// to the lowest priority (15) by the port so they never pre-empt a section.
+#define OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY (5)
+
+// ---- Stacks ---------------------------------------------------------------
+
+// Note: the Cortex-M port's context::create() asserts the stack holds room for
+// two exception frames, comparing size-in-elements against 2*sizeof(frame_t)
+// in bytes, so every thread stack must exceed ~544 bytes. Keep these >= 1 KiB.
+#define OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES (2048)
+#define OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES (1024)
+
+// ---- Diagnostics / trace --------------------------------------------------
+
+// Route trace::printf() to the host console through ARM semihosting
+// (BKPT 0xAB / SYS_WRITE0) via the debug probe. Used here for the
+// "led on" / "led off" messages.
+#define OS_USE_TRACE_SEMIHOSTING_DEBUG (1)
+
+#endif /* CMSIS_PLUS_OS_APP_CONFIG_H_ */
