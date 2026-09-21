@@ -19,13 +19,14 @@ micro-os-plus-iii-cortexm/
     └── <id>/                        that board's test applications
 ```
 
-Three boards, all one Cortex-M4F:
+Four boards, two Cortex-M profiles, one and two CPUs:
 
-| board | part | applications |
-|---|---|---|
-| `nucleof411` | STM32F411RE | `mos-test1` |
-| `weactf411` | STM32F411CE | `mos-test1`, `spi-pipeline` |
-| `weactf412` | STM32F412RE | `mos-test1`, `uart-test1` |
+| board | part | CPUs | applications |
+|---|---|---|---|
+| `nucleof411` | STM32F411RE, Cortex-M4F | 1 | `mos-test1` |
+| `weactf411` | STM32F411CE, Cortex-M4F | 1 | `mos-test1`, `spi-pipeline` |
+| `weactf412` | STM32F412RE, Cortex-M4F | 1 | `mos-test1`, `uart-test1` |
+| `pico2` | RP2350, 2× Cortex-M33 | **2** | `smp-test1`…`smp-test5`, `smp-mat-test` |
 
 ## Building
 
@@ -52,6 +53,25 @@ BOARD=nucleof411 ./test/hw.sh mos-test1
 `UOS_BOARD_LINKER_QEMU`, so each builds one image per test rather than two,
 and the dispatcher points at `hw.sh`.
 
+## SMP, and where it lives
+
+`pico2` is the SMP board. Two identical, cache-coherent Cortex-M33 in one
+coherency domain — unlike the RK3506's Cortex-M0 companion, these two are
+peers, so the scheduler places threads on both and either can take an IPI
+from the other.
+
+Three pieces of RP2350 silicon make that work, and all three are the
+**board's**, not the port's:
+
+| | |
+|---|---|
+| kernel lock | SIO hardware spinlock 0 — not LDREX/STREX; the RP2350 has no global exclusive monitor, so the architectural route does not work across the two cores |
+| IPI | the SIO inter-core FIFO on `SIO_IRQ_FIFO` (external IRQ 25); the handler drains the FIFO and pends its own core's PendSV |
+| CPU index | `SIO_CPUID` |
+
+Core 1 is launched through the bootrom FIFO handshake with its own MSP. Only
+core 0 advances the RTOS clock; core 1's SysTick reschedules core 1 alone.
+
 ## One CPU, and why that matters
 
 `src/rtos/os-core.cpp` is upstream's Cortex-M port, carried over unmodified.
@@ -60,10 +80,13 @@ the kernel's SMP branches compile out, and **no kernel patch is applied**.
 That is exactly how the predecessor proved these boards, and it is what makes
 them the witness that the SMP port contract is optional rather than assumed.
 
-The predecessor also has a dual-core Cortex-M SMP core, in its `pico2` tree.
-It is **not** portable Cortex-M SMP and cannot simply replace this file: its
-kernel lock is the RP2350's SIO hardware spinlock 0, its IPI is the SIO
-inter-core FIFO on IRQ 25, and its CPU id is `SIO_CPUID`. All three are
-silicon, not ISA — so in this layout they belong to a board, the way the
-Lyra's GIC-400 SGI and the Pi's do. `cortexm` will gain SMP by a board
-arriving that supplies a lock and an IPI, not by `os-core.cpp` changing.
+`pico2` uses a different core — `src/rtos/os-core-rp2350.cpp`, with its own
+port headers in `include-rp2350/` — and names it in its `board.cmake`
+(`UOS_BOARD_PORT_CORE`, `UOS_BOARD_PORT_INCLUDE`). The two are 91% the same
+file: pico2's is upstream's plus an `OS_USE_SMP_SCHEDULER` branch.
+
+They are not merged today, for a stated reason rather than an oversight. The
+three STM32 boards are hardware-proven on upstream's core, and moving them
+onto a different 748-line scheduler has to be re-proven on the desk, not
+assumed. A board therefore names the core it was proven with, and adding
+`pico2` reached no STM32 board. Merging them is a later step.

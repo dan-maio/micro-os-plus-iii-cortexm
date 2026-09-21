@@ -132,18 +132,41 @@ file (GLOB _board_sources CONFIGURE_DEPENDS
 # The port itself.
 add_library (micro-os-plus-iii-cortexm-interface INTERFACE)
 
+# WHICH PORT CORE, and why this is a board choice at all.
+#
+# Cortex-M is one ISA family but not one scheduler. Upstream's core (the
+# default below) is single-core: PendSV, SysTick, PRIMASK critical sections.
+# The RP2350 flavour is the predecessor's pico2 core, which is that plus an
+# SMP branch gated on OS_USE_SMP_SCHEDULER -- and the SMP branch is RP2350
+# silicon: SIO hardware spinlock 0 for the kernel lock, the SIO inter-core
+# FIFO for the IPI, SIO_CPUID for the core index.
+#
+# The two are 91% the same file, and one day they should be one. They are not
+# merged today for a stated reason: the three STM32 boards are hardware-proven
+# on upstream's core, and moving them onto a different 748-line scheduler is a
+# change that has to be re-proven on the desk, not assumed. A board therefore
+# names the core it was proven with, and adding pico2 reaches no STM32 board.
+#
+# Defaults are upstream's, so a board that says nothing gets what the STM32
+# boards get.
+if (NOT DEFINED UOS_BOARD_PORT_CORE)
+  set (UOS_BOARD_PORT_CORE "src/rtos/os-core.cpp")
+endif ()
+if (NOT DEFINED UOS_BOARD_PORT_INCLUDE)
+  set (UOS_BOARD_PORT_INCLUDE "include")
+endif ()
+
 target_include_directories (
   micro-os-plus-iii-cortexm-interface
-  INTERFACE "include" "${UOS_BOARD_SRC_DIR}/include"
+  INTERFACE "${UOS_BOARD_PORT_INCLUDE}" "${UOS_BOARD_SRC_DIR}/include"
 )
 
 target_sources (
   micro-os-plus-iii-cortexm-interface
   INTERFACE
-        # The whole ISA half of this port is one file: the PendSV context
-        # switch, the SysTick tick and the critical sections. Upstream's,
-        # unmodified.
-        src/rtos/os-core.cpp
+        # The ISA half of this port: the PendSV context switch, the SysTick
+        # tick and the critical sections. Which one, see above.
+        "${UOS_BOARD_PORT_CORE}"
         # Strong _Exit(): terminate through semihosting SYS_EXIT, so
         # std::exit() ends the run with a real exit code instead of idling.
         # The AArch32 and AArch64 ports carry the same file.
@@ -180,11 +203,12 @@ target_link_libraries (
   micro-os-plus-iii-cortexm-interface
   INTERFACE
         micro-os-plus::iii
-        # Upstream's generic startup, which the Cortex-M boards DO use and
-        # the Pi and Lyra do not -- those have their own startup.S. This is
-        # the reason the kernel splits it out as its own target.
-        micro-os-plus::iii-startup
-        micro-os-plus::iii-trace-semihosting
+        # Upstream's generic startup and the trace backend are NOT here.
+        # They are board choices, and the boards of this port disagree: the
+        # STM32 boards take micro-os-plus::iii-startup and
+        # ::iii-trace-semihosting, while the RP2350 has its own boot.S and
+        # its own interrupt vectors and traces over the UART. A board names
+        # both in UOS_BOARD_LIBS.
         ${_board_libs}
 )
 
