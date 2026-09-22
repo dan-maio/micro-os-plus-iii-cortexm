@@ -129,7 +129,17 @@ file (GLOB _board_sources CONFIGURE_DEPENDS
       "${UOS_BOARD_SRC_DIR}/src/*.S" "${UOS_BOARD_SRC_DIR}/src/rtos/*.cpp")
 
 # -----------------------------------------------------------------------------
-# The port itself.
+# The port itself, in two halves.
+#
+#   -board-interface   the BOARD: its flags, its include path, its start-up
+#                      and its silicon support. True before any scheduler
+#                      exists, and therefore linkable on its own.
+#   -interface         that, plus the kernel and the ISA scheduler.
+#
+# The split is not tidiness. Two of the RP2350 tests compile no kernel at all
+# -- they are the bare-metal probes that run before one exists -- and until
+# this split there was no way to express them at all.
+add_library (micro-os-plus-iii-cortexm-board-interface INTERFACE)
 add_library (micro-os-plus-iii-cortexm-interface INTERFACE)
 
 # WHICH PORT CORE, and why this is a board choice at all.
@@ -157,8 +167,20 @@ if (NOT DEFINED UOS_BOARD_PORT_INCLUDE)
 endif ()
 
 target_include_directories (
+  micro-os-plus-iii-cortexm-board-interface
+  INTERFACE "${UOS_BOARD_SRC_DIR}/include"
+)
+target_include_directories (
   micro-os-plus-iii-cortexm-interface
-  INTERFACE "${UOS_BOARD_PORT_INCLUDE}" "${UOS_BOARD_SRC_DIR}/include"
+  INTERFACE "${UOS_BOARD_PORT_INCLUDE}"
+)
+
+target_sources (
+  micro-os-plus-iii-cortexm-board-interface
+  INTERFACE
+        # Per-board: the start-up, the vectors, the clocks and the LED --
+        # everything that is true of the silicon before a scheduler exists.
+        ${_board_sources}
 )
 
 target_sources (
@@ -171,17 +193,14 @@ target_sources (
         # std::exit() ends the run with a real exit code instead of idling.
         # The AArch32 and AArch64 ports carry the same file.
         src/semihosting-exit.cpp
-        # Per-board: the LED, the console, the µOS++ startup hooks and the
-        # newlib syscalls.
-        ${_board_sources}
 )
 
 target_compile_definitions (
-  micro-os-plus-iii-cortexm-interface INTERFACE ${_board_define}
+  micro-os-plus-iii-cortexm-board-interface INTERFACE ${_board_define}
 )
 
 target_compile_options (
-  micro-os-plus-iii-cortexm-interface
+  micro-os-plus-iii-cortexm-board-interface
   INTERFACE ${_board_flags}
             # The predecessor's Makefiles carried this on every Cortex-M
             # build and none of the Cortex-A ones: without it every static
@@ -192,7 +211,7 @@ target_compile_options (
 )
 
 target_link_options (
-  micro-os-plus-iii-cortexm-interface
+  micro-os-plus-iii-cortexm-board-interface
   INTERFACE ${_board_flags}
             # newlib-nano. The three boards' Makefiles all linked with it,
             # and the linker scripts are sized for it.
@@ -200,9 +219,8 @@ target_link_options (
 )
 
 target_link_libraries (
-  micro-os-plus-iii-cortexm-interface
+  micro-os-plus-iii-cortexm-board-interface
   INTERFACE
-        micro-os-plus::iii
         # Upstream's generic startup and the trace backend are NOT here.
         # They are board choices, and the boards of this port disagree: the
         # STM32 boards take micro-os-plus::iii-startup and
@@ -212,7 +230,21 @@ target_link_libraries (
         ${_board_libs}
 )
 
+target_link_libraries (
+  micro-os-plus-iii-cortexm-interface
+  INTERFACE micro-os-plus-iii-cortexm-board-interface micro-os-plus::iii
+)
+
 add_library (micro-os-plus::cortexm ALIAS micro-os-plus-iii-cortexm-interface)
+add_library (micro-os-plus::cortexm-bare
+             ALIAS micro-os-plus-iii-cortexm-board-interface)
+
+# Which target a test links. The bare one exists for applications that run
+# BEFORE a scheduler does -- see NO_KERNEL in uos-app.cmake. A port with no
+# such test leaves UOS_PORT_BARE_LIB unset and the test loop rejects the
+# request rather than quietly linking a kernel.
+set (UOS_PORT_LIB      micro-os-plus::cortexm      CACHE INTERNAL "")
+set (UOS_PORT_BARE_LIB micro-os-plus::cortexm-bare CACHE INTERNAL "")
 
 # -----------------------------------------------------------------------------
 if (PROJECT_IS_TOP_LEVEL AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/CMakeLists.txt")
