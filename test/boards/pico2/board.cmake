@@ -53,9 +53,13 @@ set (UOS_BOARD_LIBS  micro-os-plus::soc-rp2350)
 # M33 is ARMv8-M, but the port headers' v7E-M path is the one this board was
 # brought up and proven on; letting the compiler's own __ARM_ARCH_8M_MAIN__
 # select a different branch would change the scheduler under a working board.
+# OS_USE_SMP_SCHEDULER is NOT here. It is derived per application from NCPU by
+# uos_add_app(), because on this board it is not a board-wide fact: smp-test1
+# (the single-core RTOS bring-up) and sc-test-ko (the single-core kernel-object
+# test) define it in none of the predecessor's Makefiles. test/<board>/
+# tests.cmake names them through board_test_ncpu().
 set (UOS_BOARD_DEFINES
      OS_USE_OS_APP_CONFIG_H
-     OS_USE_SMP_SCHEDULER
      __ARM_ARCH_7EM__
      "PORT_GREETING=\"µOS++ Raspberry Pi Pico 2 (RP2350, 2x Cortex-M33 SMP)\"")
 
@@ -64,19 +68,73 @@ set (UOS_BOARD_DEFINES
 # predecessor's per-test Makefiles already made, read off all seven of them.
 #
 #   src/    boot.S, interrupt-vectors.S, init-fini-stubs.c, clocks.cpp,
-#           led.cpp, multicore.cpp -- compiled for every application, because
-#           every Makefile listed them.
+#           led.cpp -- compiled for every application, because every Makefile
+#           listed them.
 #
-#   glue/   uart.cpp, rtos-glue.cpp, trace-uart.cpp, syscalls.c -- NOT
-#           compiled for every application, because two tests replace one:
-#             smp-test5  defines its own uart:: in main.cpp
-#             smp-test0  has no RTOS at all, so no glue, no trace, no syscalls
+#   glue/   uart.cpp, rtos-glue.cpp, trace-uart.cpp, syscalls.c,
+#           multicore.cpp, psram.cpp, adc.cpp -- NOT compiled for every
+#           application, because the Makefiles disagree, one test at a time:
+#             smp-test5     defines its own uart:: in main.cpp
+#             smp-test1     single-core: no multicore.cpp
+#             sc-test-ko    single-core: no multicore.cpp
+#             the PSRAM set  adds psram.cpp
+#             the nested-clock set  adds adc.cpp
+#             smp-test0     has no RTOS at all, so no glue at all
 #           Linking the board's copy as well is a duplicate definition, which
 #           is exactly what a glob over src/ produced before this split.
 #
-# test/pico2/tests.cmake composes them per test.
-set (UOS_BOARD_UART "${CMAKE_CURRENT_LIST_DIR}/glue/uart.cpp")
+# Each board's test/<board>/tests.cmake composes them per test.
+set (UOS_BOARD_UART      "${CMAKE_CURRENT_LIST_DIR}/glue/uart.cpp")
+set (UOS_BOARD_MULTICORE "${CMAKE_CURRENT_LIST_DIR}/glue/multicore.cpp")
+set (UOS_BOARD_PSRAM     "${CMAKE_CURRENT_LIST_DIR}/glue/psram.cpp")
+set (UOS_BOARD_ADC       "${CMAKE_CURRENT_LIST_DIR}/glue/adc.cpp")
 set (UOS_BOARD_RTOS_GLUE
      "${CMAKE_CURRENT_LIST_DIR}/glue/rtos-glue.cpp"
      "${CMAKE_CURRENT_LIST_DIR}/glue/trace-uart.cpp"
      "${CMAKE_CURRENT_LIST_DIR}/glue/syscalls.c")
+
+# The other two memory maps this silicon is built against. They belong to the
+# 16 MB RP2350B boards rather than to this 4 MB one, and they live here
+# because the board CODE lives here: pico2-rp2350b-psram/ and pico2-pizero/
+# are board.cmake, a probe config and a test directory, nothing more.
+set (UOS_BOARD_LINKER_16M   "${CMAKE_CURRENT_LIST_DIR}/pico2-rp2350b.ld")
+set (UOS_BOARD_LINKER_PSRAM "${CMAKE_CURRENT_LIST_DIR}/pico2-rp2350b-psram.ld")
+
+# -----------------------------------------------------------------------------
+# The USB device stack, for the two tests that are a USB gadget.
+#
+# TinyUSB, vendored by the predecessor. It carried TWO copies of it, one under
+# src/usb-cdc/ and one under src/usb-hid/, and they are byte-identical apart
+# from the one class driver each keeps (class/cdc against class/hid). Here it
+# is ONE tree carrying both classes, and what genuinely differs per test --
+# tusb_config.h, usb_descriptors.c and the class glue -- stays split, in
+# usb/cdc/ and usb/hid/.
+#
+# tusb_config.h is why the per-test include directory has to come FIRST:
+# tinyusb includes it by plain name, and each test configures a different
+# device class.
+set (UOS_BOARD_USB_INCLUDE
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/pico-shim")
+set (UOS_BOARD_USB_CORE_SOURCES
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/tusb.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/common/tusb_fifo.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/device/usbd.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/portable/raspberrypi/rp2040/dcd_rp2040.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/portable/raspberrypi/rp2040/rp2040_usb.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/pico-shim/pico-shim.c")
+
+set (UOS_BOARD_USB_CDC_INCLUDE "${CMAKE_CURRENT_LIST_DIR}/usb/cdc")
+set (UOS_BOARD_USB_CDC_SOURCES
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/class/cdc/cdc_device.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/cdc/usb_descriptors.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/cdc/usb_cdc.c")
+
+set (UOS_BOARD_USB_HID_INCLUDE "${CMAKE_CURRENT_LIST_DIR}/usb/hid")
+set (UOS_BOARD_USB_HID_SOURCES
+     "${CMAKE_CURRENT_LIST_DIR}/usb/tinyusb/class/hid/hid_device.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/hid/usb_descriptors.c"
+     "${CMAKE_CURRENT_LIST_DIR}/usb/hid/usb_hid.c")
+
+# The WS2812 RGB LED driver. One test uses it, so it is glue, not src/.
+set (UOS_BOARD_WS2812 "${CMAKE_CURRENT_LIST_DIR}/glue/ws2812.cpp")
