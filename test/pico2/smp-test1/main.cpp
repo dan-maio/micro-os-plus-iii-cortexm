@@ -17,6 +17,7 @@
 
 #include <bsp/uart.hpp>
 #include <bsp/led.hpp>
+#include <hw_result.hpp>
 
 #include <cstdio>
 #include <cstdint>
@@ -113,6 +114,35 @@ os_main (int /*argc*/, char* /*argv*/[])
   attr.th_stack_address = led_stack;
   attr.th_stack_size_bytes = sizeof (led_stack);
   static thread led_th{ "led", led_thread, nullptr, attr };
+
+  // Let the two workers and the LED thread run for ten beats, then check that
+  // the scheduler, the mutex and the system clock all did their job. The
+  // verdict is a RESULT line and, under QEMU, a semihosting exit.
+  constexpr unsigned kCheckBeats = 10;
+  for (unsigned b = 0; b < kCheckBeats; ++b)
+    {
+      sysclock.sleep_for (500);
+    }
+
+  const bool ok = (g_global > 0 && worker_ctx[0].local > 0
+                   && worker_ctx[1].local > 0);
+  char b[80];
+  int n = std::snprintf (b, sizeof (b),
+                         "\nRESULT: %s  (global=%u, wrk0=%u, wrk1=%u)\n",
+                         ok ? "PASS" : "FAIL", g_global, worker_ctx[0].local,
+                         worker_ctx[1].local);
+  uart::write (b, static_cast<std::size_t> (n));
+
+  // QEMU runs end here, through the semihosting exit that carries the
+  // verdict; on hardware this is a no-op and the idle loop below runs.
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
 
   for (;;)
     {

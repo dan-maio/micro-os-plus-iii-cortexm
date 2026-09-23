@@ -34,6 +34,7 @@
 
 #include <bsp/led.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 
 #include <cerrno>
 #include <cstdint>
@@ -382,6 +383,16 @@ namespace
     g_log.lock ();
     uart::write (b, static_cast<std::size_t> (n));
     g_log.unlock ();
+
+    // End the run with the verdict (semihosting exit).
+    if (g_fail == 0)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
     // LED verdict forever: slow heartbeat = PASS, fast blink = FAIL.
     for (;;)

@@ -8,10 +8,13 @@
 # Same silicon and the same OpenOCD sequence as the Pico 2; what differs is
 # the probe (a different CMSIS-DAP VID:PID, see openocd.cfg) and FLASHSIZE.
 #
-# OpenOCD only, over CMSIS-DAP. No GDB, and nothing redirected: this board
-# traces over its own UART (bsp trace-uart.cpp), not over semihosting, so the
-# console is the board's serial port and OpenOCD exits once the cores are
-# running.
+# OpenOCD only, over CMSIS-DAP. The console is the board's serial port
+# (bsp trace-uart.cpp); the RESULT line is also read here, from the copy teed
+# to the log, so the script can report PASS/FAIL and stop.
+#
+# SEMIHOSTING IS ENABLED BEFORE THE RESUME: the tests end through the strong
+# _Exit() (test/pico2/include/hw_result.hpp), which is a semihosting SYS_EXIT.
+# With semihosting off the BKPT is an unhandled debug event and the core halts.
 #
 # TWO THINGS HERE ARE NOT COSMETIC, both learned on the board:
 #
@@ -25,7 +28,11 @@
 #   the bootrom readiness word. Resuming cm1 first leaves it in the bootrom
 #   core-1 launch loop, where it answers the FIFO handshake normally.
 #
-# Env:  BUILD=<dir>     the CMake build directory  (default: test/build-pico2)
+# ONE TEST PER POWER CYCLE. Every run is a debug-in-RAM run; only a power
+# cycle puts the board back into a known state. Run one test, power-cycle,
+# run the next.
+#
+# Env:  BUILD=<dir>     the CMake build directory  (default: test/build-pico2-pizero)
 #       OPENOCD=<path>  a specific OpenOCD
 # -----------------------------------------------------------------------------
 set -uo pipefail
@@ -47,6 +54,7 @@ if [[ -z "$APP" || "$APP" == "list" ]]; then
   list_tests
   exit 0
 fi
+SECS="${2:-600}"
 
 ELF="$BUILD/test/${APP}-hwd"
 if [[ ! -f "$ELF" ]]; then
@@ -64,15 +72,42 @@ fi
 
 pkill -9 -f "openocd.*boards/pico2-pizero/openocd.cfg" 2>/dev/null || true
 
+LOGS="$BUILD/.hw-logs"; mkdir -p "$LOGS"
+LOG="$LOGS/${APP}.log"
+rm -f "$LOG"
+
 echo "== Pi-Zero RP2350B (16 MB flash, 2x Cortex-M33 SMP) : $APP =="
-exec "$OCD" "${SCRIPTS_ARG[@]}" \
+
+"$OCD" "${SCRIPTS_ARG[@]}" \
   -f "$HERE/openocd.cfg" \
   -c "init" \
   -c "reset init" \
   -c "program \"$ELF\" verify" \
   -c "reset init" \
   -c "targets rp2350.cm1" \
+  -c "arm semihosting enable" \
   -c "resume" \
   -c "targets rp2350.cm0" \
+  -c "arm semihosting enable" \
   -c "resume" \
-  -c "shutdown"
+  > >(tee "$LOG") 2>&1 &
+OCD_PID=$!
+
+waited=0 rc=2
+while kill -0 "$OCD_PID" 2>/dev/null; do
+  if grep -q 'RESULT: PASS' "$LOG" 2>/dev/null; then rc=0; break; fi
+  if grep -q 'RESULT: FAIL' "$LOG" 2>/dev/null; then rc=1; break; fi
+  if (( waited >= SECS )); then rc=2; break; fi
+  sleep 1; waited=$((waited + 1))
+done
+
+kill "$OCD_PID" 2>/dev/null; wait "$OCD_PID" 2>/dev/null
+
+printf '\n%-24s ' "$APP"
+case "$rc" in
+  0) echo "PASS  (${waited}s)" ;;
+  1) echo "FAIL  (see $LOG)" ;;
+  *) echo "TIMEOUT after ${SECS}s  (see $LOG)" ;;
+esac
+echo "Power-cycle the board before the next test."
+[[ "$rc" -eq 0 ]]

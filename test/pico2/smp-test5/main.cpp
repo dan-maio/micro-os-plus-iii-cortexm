@@ -32,6 +32,7 @@
 #include <bsp/led.hpp>
 #include <bsp/multicore.hpp>
 #include <bsp/rp2350.hpp>
+#include <hw_result.hpp>
 #include <cmsis_device.h>
 
 #include <cstddef>
@@ -450,6 +451,23 @@ namespace
         static_cast<unsigned> (g_stall_fail ? 1u : 0u),
         ok ? "PASS (cross-core IRQ-driven TX)" : "FAIL");
     txq_write (b, static_cast<std::size_t> (len));
+
+    // The summary goes through the TX ring, drained by core 1's IRQ; wait for
+    // it to reach the wire before ending the run, or the exit would lose it.
+    for (unsigned i = 0; i < 500 && g_tx_bytes != g_tx_enq; ++i)
+      {
+        sysclock.sleep_for (1);
+      }
+
+    // End the run with the verdict (semihosting exit).
+    if (ok)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
     for (;;)
       {

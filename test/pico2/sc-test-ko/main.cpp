@@ -34,6 +34,7 @@
 
 #include <bsp/led.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 
 #include <cerrno>
 #include <cstdint>
@@ -382,6 +383,17 @@ namespace
     g_log.lock ();
     uart::write (b, static_cast<std::size_t> (n));
     g_log.unlock ();
+
+    // QEMU runs end here, through the semihosting exit that carries the
+    // verdict; on hardware this is a no-op and the LED loop below runs.
+    if (g_fail == 0)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
     // LED verdict forever: slow heartbeat = PASS, fast blink = FAIL.
     for (;;)

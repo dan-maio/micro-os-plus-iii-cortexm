@@ -27,6 +27,7 @@
 #include <uart.hpp>
 #include <spi.hpp>
 #include <flatfs.hpp>
+#include <hw_result.hpp>
 
 #include <base64.hpp>
 #include <pipeline.hpp>
@@ -796,6 +797,20 @@ os_main (int /*argc*/, char* /*argv*/[])
     {
       linef ("spi-pipeline: FAIL, %u verdicts\n", static_cast<unsigned> (failures));
     }
+
+  // End the run with the verdict (semihosting exit).
+  {
+    const bool ok = (failures == 0 && iterations_ok == pipeline::ITERATIONS);
+    linef ("RESULT: %s\n", ok ? "PASS" : "FAIL");
+    if (ok)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
+  }
 
   // Park: the workers are done; the board keeps the scheduler alive.
   for (;;)

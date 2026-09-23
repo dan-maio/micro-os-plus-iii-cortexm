@@ -54,6 +54,14 @@ set (UOS_DEVICES_DIR "${_uos_siblings}/micro-os-plus-iii-devices"
      CACHE PATH "µOS++ III devices working copy")
 
 foreach (_dep_var IN ITEMS UOS_SMP_DIR UOS_DEVICES_DIR)
+  # A workspace may keep the siblings as `*.git` working copies (the xPack
+  # development convention); fall back to that name before giving up.
+  if (NOT EXISTS "${${_dep_var}}/CMakeLists.txt"
+      AND EXISTS "${${_dep_var}}.git/CMakeLists.txt")
+    set (${_dep_var} "${${_dep_var}}.git" CACHE PATH
+         "µOS++ III sibling working copy" FORCE)
+  endif ()
+
   if (NOT EXISTS "${${_dep_var}}/CMakeLists.txt")
     string (REPLACE "UOS_" "" _repo "${_dep_var}")
     string (REPLACE "_DIR" "" _repo "${_repo}")
@@ -263,6 +271,51 @@ target_link_libraries (
 add_library (micro-os-plus::cortexm ALIAS micro-os-plus-iii-cortexm-interface)
 add_library (micro-os-plus::cortexm-bare
              ALIAS micro-os-plus-iii-cortexm-board-interface)
+
+# The GENERIC port, for the `qemu` image of a board QEMU does not model.
+#
+# A board like the pico2 overrides the port core (os-core-rp2350.cpp) and the
+# include directory (include-rp2350/) with RP2350-specific ones. Its emulated
+# image must not: it links the generic core and the generic include, the same
+# way the upstream Cortex-M port does, plus whatever device provides the
+# vector table (the harness's device-qemu-cortexm). The board's tests are
+# unchanged; only what runs under them differs.
+add_library (micro-os-plus-iii-cortexm-qemu-interface INTERFACE
+             EXCLUDE_FROM_ALL)
+target_include_directories (micro-os-plus-iii-cortexm-qemu-interface
+                            INTERFACE "include")
+target_sources (
+  micro-os-plus-iii-cortexm-qemu-interface
+  INTERFACE "src/rtos/os-core.cpp" src/semihosting-exit.cpp
+)
+target_link_libraries (micro-os-plus-iii-cortexm-qemu-interface
+                       INTERFACE micro-os-plus::iii)
+# The console is the semihosting channel; the kernel's trace-semihosting
+# backend only compiles when one of these is defined, otherwise the weak
+# no-op trace::write wins and nothing is printed.
+target_compile_definitions (
+  micro-os-plus-iii-cortexm-qemu-interface
+  INTERFACE OS_USE_TRACE_SEMIHOSTING_STDOUT
+)
+# The emulated image runs on QEMU's generic Cortex-M7 machine (mps2-an500),
+# which is what the harness's device-qemu-cortexm supports -- its CMSIS core
+# has no Cortex-M33. The board's own tests keep the board's flags; only the
+# qemu image is built for the generic machine.
+target_compile_options (
+  micro-os-plus-iii-cortexm-qemu-interface
+  INTERFACE -mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16
+)
+target_link_options (
+  micro-os-plus-iii-cortexm-qemu-interface
+  INTERFACE -mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16
+            --specs=nano.specs
+)
+add_library (micro-os-plus::cortexm-qemu
+             ALIAS micro-os-plus-iii-cortexm-qemu-interface)
+message (
+  VERBOSE
+  "> micro-os-plus::cortexm-qemu -> micro-os-plus-iii-cortexm-qemu-interface"
+)
 
 # Which target a test links. The bare one exists for applications that run
 # BEFORE a scheduler does -- see NO_KERNEL in uos-app.cmake. A port with no

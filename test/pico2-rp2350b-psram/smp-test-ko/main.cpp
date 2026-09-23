@@ -35,6 +35,7 @@
 #include <bsp/multicore.hpp>
 #include <bsp/rp2350.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 #include <cmsis_device.h>
 
 #include <cerrno>
@@ -412,6 +413,16 @@ namespace
     g_log.lock ();
     uart::write (b, static_cast<std::size_t> (n));
     g_log.unlock ();
+
+    // End the run with the verdict (semihosting exit).
+    if (g_fail == 0)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
     for (;;)
       {

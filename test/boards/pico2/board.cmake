@@ -38,9 +38,15 @@ set (UOS_BOARD_CAPS  smp led uart)
 set (UOS_BOARD_PORT_CORE    "src/rtos/os-core-rp2350.cpp")
 set (UOS_BOARD_PORT_INCLUDE "include-rp2350")
 
-# Hardware only. QEMU has no RP2350 machine, and the parts that would matter
-# -- the SIO block the whole SMP design rests on -- are exactly what a
-# generic Cortex-M33 machine does not have.
+# The emulated image links against QEMU's generic Cortex-M33 machine
+# (mps2-an505), whose memory map this script describes. The RP2350's own SIO
+# block -- the one the whole SMP design rests on -- is not modelled, and the
+# USB and PSRAM peripherals are not either, so those tests are listed
+# HWD_ONLY in tests.cmake and never get a `qemu` image. What is left -- the
+# single-core bring-up and the kernel-object tests -- builds and runs
+# emulated.
+set (UOS_BOARD_LINKER_QEMU "${UOS_BOARD_SRC_DIR}/linker-qemu.ld")
+
 set (UOS_BOARD_LINKER_HW "${UOS_BOARD_SRC_DIR}/linker.ld")
 
 # No micro-os-plus::iii-startup: this board has its own boot.S and its own

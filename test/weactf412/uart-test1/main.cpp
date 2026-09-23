@@ -21,6 +21,7 @@
 #include <board.hpp>
 #include <led.hpp>
 #include <uart.hpp>
+#include <hw_result.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +38,7 @@ namespace
   std::uint8_t g_buf[BUFFER_SIZE];
   int g_head = 0;
   int g_tail = 0;
+  volatile unsigned g_tx_heartbeats = 0;
 
   mutex g_buf_mutex{ "uart-buf" };
   semaphore_counting g_buf_free{ "buf-free", BUFFER_SIZE, BUFFER_SIZE };
@@ -96,6 +98,7 @@ namespace
               {
                 uart::write (line, static_cast<std::size_t> (n));
               }
+            g_tx_heartbeats = heartbeat;
           }
       }
     return nullptr;
@@ -144,6 +147,27 @@ os_main (int /*argc*/, char* /*argv*/[])
   attr.th_stack_address = led_stack;
   attr.th_stack_size_bytes = sizeof (led_stack);
   static thread led_thread{ "led", led_func, nullptr, attr };
+
+  // Let the threads run for a bounded time, then check the TX heartbeat
+  // advanced and end the run with the verdict (semihosting exit).
+  constexpr unsigned kCheckMs = 5000;
+  sysclock.sleep_for (kCheckMs);
+  {
+    const bool ok = (g_tx_heartbeats > 0);
+    char rb[80];
+    std::snprintf (rb, sizeof (rb), "\nRESULT: %s  (heartbeats=%u)\n",
+                   ok ? "PASS" : "FAIL",
+                   static_cast<unsigned> (g_tx_heartbeats));
+    uart::write (rb);
+    if (ok)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
+  }
 
   // os_main has nothing more to do; keep it alive so the workers run.
   for (;;)

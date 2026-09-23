@@ -25,6 +25,13 @@ include ("${CMAKE_CURRENT_LIST_DIR}/../pico2/board.cmake")
 
 set (UOS_BOARD_LINKER_HW "${UOS_BOARD_LINKER_16M}")
 
+# No emulated image, and this is a board fact, not a missing script: QEMU's
+# generic Cortex-M machine has no Cortex-M33, and this board is deliberately
+# built ARMv8-M (__ARM_ARCH_8M_MAIN__ below), so the `qemu` variant the pico2
+# board offers cannot run here. Clearing the linker removes it, and the port's
+# builder emits `hwd` alone.
+set (UOS_BOARD_LINKER_QEMU "")
+
 set (UOS_BOARD_DEFINES
      OS_USE_OS_APP_CONFIG_H
      __ARM_ARCH_8M_MAIN__

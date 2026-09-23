@@ -77,6 +77,12 @@ set (BOARD_TEST_SELF_CONTAINED "")
 # and are declared NO_KERNEL, so no kernel, no port scheduler and no OS_NCPU
 # reach them. A port with no such test never sets UOS_PORT_BARE_LIB.
 set (BOARD_TEST_NO_KERNEL "")
+# Tests that only make sense on the board and get NO `qemu` image, even when
+# the board has a QEMU linker. A board whose silicon QEMU models only partly
+# -- the RP2350's USB and PSRAM are the case -- still runs its core tests
+# emulated and says so per test here, rather than dropping the whole board
+# from the emulator.
+set (BOARD_TEST_HWD_ONLY "")
 function (board_test_defines _app _out)
   set (${_out} "" PARENT_SCOPE)
 endfunction ()
@@ -131,13 +137,33 @@ endfunction ()
 function (board_test_ncpu _app _out)
   set (${_out} "${UOS_BOARD_NCPU}" PARENT_SCOPE)
 endfunction ()
+# What the QEMU variant needs instead of the board.
+#
+# A board whose silicon QEMU does not model cannot run its board tests
+# emulated by linking the board: the pico2 is the case. These three hooks let
+# the board say what the `qemu` image links instead -- the kernel, a generic
+# device with its own vector table, and a semihosting console -- while the
+# test's own sources are unchanged. Returning nothing keeps the board's.
+function (board_test_qemu_libs _app _out)
+  set (${_out} "" PARENT_SCOPE)
+endfunction ()
+function (board_test_qemu_sources _app _out)
+  set (${_out} "" PARENT_SCOPE)
+endfunction ()
+function (board_test_qemu_includes _app _out)
+  set (${_out} "" PARENT_SCOPE)
+endfunction ()
 if (EXISTS "${_test_dir}/tests.cmake")
   include ("${_test_dir}/tests.cmake")
 endif ()
 
 # The support this board's tests share: one copy per board, not per test.
 file (GLOB _test_support CONFIGURE_DEPENDS "${_test_dir}/src/*.cpp")
-set (_test_includes "${_test_dir}/include")
+# `boards/shared` is the one include directory every board's tests get: it
+# holds the cross-board helpers, hw_result.hpp among them, which would
+# otherwise be copied into each board's own include/.
+set (_test_includes "${_test_dir}/include"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/boards/shared")
 
 # One application per directory. include/ and src/ are the support above, not
 # applications, so they are skipped.
@@ -195,7 +221,17 @@ foreach (_dir IN LISTS _test_dirs)
     list (APPEND _libs ${UOS_BOARD_DEVICES})
   endif ()
 
-  foreach (_variant IN LISTS _variants)
+  # A test listed HWD_ONLY gets the hardware image even on a board that has a
+  # QEMU linker; every other test gets every variant the board has.
+  set (_app_variants ${_variants})
+  if ("${_app}" IN_LIST BOARD_TEST_HWD_ONLY)
+    set (_app_variants hwd)
+  endif ()
+
+  foreach (_variant IN LISTS _app_variants)
+    set (_variant_libs ${_libs})
+    set (_variant_sources ${_app_sources})
+    set (_variant_includes ${_app_includes})
     if (_variant STREQUAL "hwd")
       # DEBUG_BOOT is opt-in: every early-boot marker is a semihosting trap,
       # and under a JTAG probe each one costs real time. Turn it on only when
@@ -217,12 +253,29 @@ foreach (_dir IN LISTS _test_dirs)
       # builds its emulated image against the `virt` machine instead.
       set (_variant_defines QEMU_BUILD)
       set (_variant_linker "${_linker_qemu}")
+      # The emulated image may replace the board entirely (pico2): the kernel
+      # plus a generic device with its own vectors, and a semihosting console.
+      board_test_qemu_libs ("${_app}" _qemu_libs)
+      if (_qemu_libs)
+        # The board is replaced, so the board's linker script is too: the
+        # device that replaces it carries its own (-T from its CMakeLists).
+        set (_variant_libs ${_qemu_libs})
+        set (_variant_linker "")
+      endif ()
+      board_test_qemu_sources ("${_app}" _qemu_sources)
+      if (_qemu_sources)
+        # The board's own sources are what run on silicon; the emulated image
+        # replaces them with its own (the pico2's qemu glue).
+        set (_variant_sources ${_qemu_sources})
+      endif ()
+      board_test_qemu_includes ("${_app}" _qemu_includes)
+      list (APPEND _variant_includes ${_qemu_includes})
     endif ()
 
     uos_add_app (
       "${_app}-${_variant}"
       ${_no_kernel}
-      SOURCES ${_srcs} ${_app_support} ${_app_sources}
+      SOURCES ${_srcs} ${_app_support} ${_variant_sources}
       NCPU ${_app_ncpu}
       LINKER_SCRIPT "${_variant_linker}"
       DEFINES ${_common_defines} ${_app_defines} ${_variant_defines}
@@ -231,8 +284,8 @@ foreach (_dir IN LISTS _test_dirs)
       # headers sit beside its sources and includes them as <foo.hpp> needs
       # it, and one that writes "foo.hpp" never notices. Each application is
       # its own target, so this reaches no other.
-      INCLUDES ${_app_includes} ${_dir} ${_test_includes}
-      LIBRARIES ${_libs}
+      INCLUDES ${_variant_includes} ${_dir} ${_test_includes}
+      LIBRARIES ${_variant_libs}
       OUTPUT_NAME "${_app}-${_variant}"
     )
   endforeach ()

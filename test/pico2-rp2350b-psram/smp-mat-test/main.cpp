@@ -34,6 +34,7 @@
 #include <bsp/multicore.hpp>
 #include <bsp/rp2350.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 #include <cmsis_device.h>
 
 #include <algorithm>
@@ -1000,6 +1001,16 @@ os_main (int /*argc*/, char* /*argv*/[])
              pass ? "PASS (block == classical within tolerance)"
                   : "FAIL");
   write_str ("---------------------------------------------\n");
+
+    // End the run with the verdict (semihosting exit).
+    if (pass)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
   for (;;)
     {

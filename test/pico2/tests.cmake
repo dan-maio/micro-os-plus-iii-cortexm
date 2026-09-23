@@ -32,6 +32,23 @@ set (_single_core smp-test1 sc-test-ko)
 # and seven files respectively -- so they link the port's bare target.
 set (BOARD_TEST_NO_KERNEL smp-test0 exc-test)
 
+# Tests that get NO `qemu` image. The USB pair needs the RP2350's USB
+# peripheral, the multicore ones need the SIO block the SMP design rests on,
+# and QEMU's generic Cortex-M33 machine models neither. What is left --
+# exc-test, smp-test1 and sc-test-ko, the single-core bring-up and the
+# kernel-object test -- builds and runs emulated.
+set (BOARD_TEST_HWD_ONLY
+     exc-test
+     smp-mat-test
+     smp-test0
+     smp-test2
+     smp-test3
+     smp-test4
+     smp-test5
+     smp-test-ko
+     smp-test-usb-cdc-acm
+     smp-test-usb-hid)
+
 function (board_test_ncpu _app _out)
   if ("${_app}" IN_LIST _single_core)
     set (${_out} 1 PARENT_SCOPE)
@@ -105,4 +122,35 @@ function (board_test_defines _app _out)
   else ()
     set (${_out} "" PARENT_SCOPE)
   endif ()
+endfunction ()
+
+# The `qemu` image does not link the board at all. The RP2350's boot.S, its
+# interrupt vectors and its UART are what run on real silicon; on QEMU's
+# generic Cortex-M33 machine the image is the kernel plus a generic device
+# (micro-os-plus::device, whose vectors-cortexm.c owns the vector table) plus
+# the board's semihosting console glue under qemu/. The test's own sources are
+# unchanged.
+function (board_test_qemu_libs _app _out)
+  set (
+    ${_out}
+    micro-os-plus::cortexm-qemu
+    micro-os-plus::iii-startup
+    micro-os-plus::iii-trace-semihosting
+    micro-os-plus::iii-semihosting
+    micro-os-plus::iii-newlib-reent
+    micro-os-plus::iii-posix-io
+    micro-os-plus::device
+    PARENT_SCOPE
+  )
+endfunction ()
+
+function (board_test_qemu_sources _app _out)
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/src/uart.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/led.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/clocks.cpp"
+       PARENT_SCOPE)
+endfunction ()
+
+function (board_test_qemu_includes _app _out)
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/include" PARENT_SCOPE)
 endfunction ()

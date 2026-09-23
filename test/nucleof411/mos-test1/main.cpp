@@ -32,6 +32,7 @@
 #include <board.hpp>
 #include <led.hpp>
 #include <uart.hpp>
+#include <hw_result.hpp>
 
 #include <cstdio>
 #include <cstdint>
@@ -301,6 +302,26 @@ os_main (int /*argc*/, char* /*argv*/[])
   attr.th_stack_address = led_stack;
   attr.th_stack_size_bytes = sizeof (led_stack);
   static thread led_thread{ "led", led_func, &led_ctx, attr };
+
+  // Let the workers run for a bounded time, then check the shared counter
+  // moved and end the run with the verdict (semihosting exit).
+  constexpr unsigned kCheckMs = 5000;
+  sysclock.sleep_for (kCheckMs);
+  {
+    const bool ok = (g_global_counter > 0);
+    char rb[80];
+    std::snprintf (rb, sizeof (rb), "\nRESULT: %s  (global=%u)\n",
+                   ok ? "PASS" : "FAIL", g_global_counter);
+    console_line (rb);
+    if (ok)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
+  }
 
   // os_main has nothing more to do; keep it alive so the workers run.
   for (;;)

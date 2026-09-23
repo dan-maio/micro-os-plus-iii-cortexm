@@ -124,3 +124,57 @@ function (board_test_options _app _out)
     set (${_out} "" PARENT_SCOPE)
   endif ()
 endfunction ()
+
+# -----------------------------------------------------------------------------
+# The emulated suite.
+#
+# This is the pico2 board plus PSRAM, on the same silicon, so the same two
+# tests that run emulated there run here: sc-test-ko (the single-core
+# kernel-object test) and smp-test1 (the single-core RTOS bring-up). Everything
+# else is HWD_ONLY -- the multicore tests need the SIO block QEMU does not
+# model, and the PSRAM, nested-interrupt and clock-tree tests need the board's
+# own memory map and peripherals.
+set (BOARD_TEST_HWD_ONLY
+     exc-test
+     smp-mat-test
+     smp-test0
+     smp-test2
+     smp-test3
+     smp-test4
+     smp-test5
+     smp-test-ko
+     smp-test-nested
+     smp-test-nested-clock
+     smp-test-nested-clock_200
+     smp-test-nested-clock_250)
+
+# The `qemu` image links the kernel, a generic device with its own vector table
+# and a semihosting console, not the board. See test/pico2/tests.cmake for the
+# same hooks and why each library is there.
+function (board_test_qemu_libs _app _out)
+  set (
+    ${_out}
+    micro-os-plus::cortexm-qemu
+    micro-os-plus::iii-startup
+    micro-os-plus::iii-trace-semihosting
+    micro-os-plus::iii-semihosting
+    micro-os-plus::iii-newlib-reent
+    micro-os-plus::iii-posix-io
+    micro-os-plus::device
+    PARENT_SCOPE
+  )
+endfunction ()
+
+function (board_test_qemu_sources _app _out)
+  # The board's own sources are what run on silicon; the emulated image uses
+  # the pico2 board's semihosting console glue instead (this board shares that
+  # directory -- UOS_BOARD_SRC_DIR is pico2's).
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/src/uart.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/led.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/clocks.cpp"
+       PARENT_SCOPE)
+endfunction ()
+
+function (board_test_qemu_includes _app _out)
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/include" PARENT_SCOPE)
+endfunction ()

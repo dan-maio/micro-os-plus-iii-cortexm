@@ -35,6 +35,7 @@ if [[ -z "$APP" || "$APP" == "list" ]]; then
   list_tests
   exit 0
 fi
+SECS="${2:-600}"
 
 ELF="$BUILD/test/${APP}-hwd"
 if [[ ! -f "$ELF" ]]; then
@@ -50,11 +51,39 @@ if [[ "$OCD" == *"/xPacks/"* ]]; then
   SCRIPTS_ARG=(-s "$(dirname "$(dirname "$OCD")")/openocd/scripts")
 fi
 
+LOGS="$BUILD/.hw-logs"; mkdir -p "$LOGS"
+LOG="$LOGS/${APP}.log"
+rm -f "$LOG"
+
 echo "== ST Nucleo-F411RE : $APP =="
-exec "$OCD" "${SCRIPTS_ARG[@]}" \
+
+# Run OpenOCD in the background so it stays attached after `reset run`: the
+# test's semihosting SYS_EXIT has to reach a live debugger, and this script
+# reads the verdict from the log as it appears.
+"$OCD" "${SCRIPTS_ARG[@]}" \
   -f "$HERE/openocd.cfg" \
   -c "init" \
   -c "reset halt" \
   -c "program \"$ELF\"" \
   -c "arm semihosting enable" \
-  -c "reset run"
+  -c "reset run" \
+  > >(tee "$LOG") 2>&1 &
+OCD_PID=$!
+
+waited=0 rc=2
+while kill -0 "$OCD_PID" 2>/dev/null; do
+  if grep -q 'RESULT: PASS' "$LOG" 2>/dev/null; then rc=0; break; fi
+  if grep -q 'RESULT: FAIL' "$LOG" 2>/dev/null; then rc=1; break; fi
+  if (( waited >= SECS )); then rc=2; break; fi
+  sleep 1; waited=$((waited + 1))
+done
+
+kill "$OCD_PID" 2>/dev/null; wait "$OCD_PID" 2>/dev/null
+
+printf '\n%-24s ' "$APP"
+case "$rc" in
+  0) echo "PASS  (${waited}s)" ;;
+  1) echo "FAIL  (see $LOG)" ;;
+  *) echo "TIMEOUT after ${SECS}s  (see $LOG)" ;;
+esac
+[[ "$rc" -eq 0 ]]

@@ -36,6 +36,7 @@
 #include <bsp/multicore.hpp>
 #include <bsp/rp2350.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 #include <cmsis_device.h>
 
 #include <cerrno>
@@ -525,6 +526,16 @@ namespace
                    all_pass ? "PASS (kernel objects under dual-core contention)"
                             : "FAIL");
     uart::write (b);
+
+    // End the run with the verdict (semihosting exit).
+    if (all_pass)
+      {
+        hw_result::ok ();
+      }
+    else
+      {
+        hw_result::fail ();
+      }
 
     for (;;)
       {
