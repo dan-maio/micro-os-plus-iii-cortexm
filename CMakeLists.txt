@@ -128,6 +128,31 @@ file (GLOB _board_sources CONFIGURE_DEPENDS
       "${UOS_BOARD_SRC_DIR}/src/*.c" "${UOS_BOARD_SRC_DIR}/src/*.cpp"
       "${UOS_BOARD_SRC_DIR}/src/*.S" "${UOS_BOARD_SRC_DIR}/src/rtos/*.cpp")
 
+# The newlib/OS glue is identical on every board of this port, so there is one
+# copy of it, in test/boards/shared/. It is inserted where the glob used to
+# find each board's own src/syscalls.c -- the glob is sorted, so the position
+# is reproducible and link order does not move. Boards that compose their glue
+# PER TEST name it themselves (the RP2350 ones, whose two kernel-less probes
+# must not link it at all) and are recognised by having set
+# UOS_BOARD_RTOS_GLUE.
+if (NOT DEFINED UOS_BOARD_RTOS_GLUE)
+  set (_uos_syscalls "${CMAKE_CURRENT_LIST_DIR}/test/boards/shared/syscalls.c")
+  set (_uos_at -1)
+  set (_i 0)
+  foreach (_f IN LISTS _board_sources)
+    get_filename_component (_n "${_f}" NAME)
+    if (_n STRGREATER "syscalls.c" AND _uos_at EQUAL -1)
+      set (_uos_at ${_i})
+    endif ()
+    math (EXPR _i "${_i} + 1")
+  endforeach ()
+  if (_uos_at EQUAL -1)
+    list (APPEND _board_sources "${_uos_syscalls}")
+  else ()
+    list (INSERT _board_sources ${_uos_at} "${_uos_syscalls}")
+  endif ()
+endif ()
+
 # -----------------------------------------------------------------------------
 # The port itself, in two halves.
 #

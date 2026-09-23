@@ -91,7 +91,8 @@ set (UOS_BOARD_ADC       "${CMAKE_CURRENT_LIST_DIR}/glue/adc.cpp")
 set (UOS_BOARD_RTOS_GLUE
      "${CMAKE_CURRENT_LIST_DIR}/glue/rtos-glue.cpp"
      "${CMAKE_CURRENT_LIST_DIR}/glue/trace-uart.cpp"
-     "${CMAKE_CURRENT_LIST_DIR}/glue/syscalls.c")
+     # One copy for the whole port; see test/boards/shared/syscalls.c.
+     "${CMAKE_CURRENT_LIST_DIR}/../shared/syscalls.c")
 
 # The other two memory maps this silicon is built against. They belong to the
 # 16 MB RP2350B boards rather than to this 4 MB one, and they live here

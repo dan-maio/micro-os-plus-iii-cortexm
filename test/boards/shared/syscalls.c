@@ -1,5 +1,9 @@
 /*
- * syscalls.c — minimal newlib/OS glue for the WeAct F412RE bare-metal build.
+ * syscalls.c — minimal newlib/OS glue for the bare-metal builds of this port.
+ *
+ * Shared by every board. It was four copies -- nucleof411, weactf411,
+ * weactf412 and pico2 -- identical but for which board the line above
+ * happened to name.
  *
  * The shared kernel's exit.c / os-main.cpp call os_terminate() and os_goodbye();
  * newlib may reference a handful of _xxx stubs. We keep these local and tiny
