@@ -154,3 +154,32 @@ endfunction ()
 function (board_test_qemu_includes _app _out)
   set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/include" PARENT_SCOPE)
 endfunction ()
+
+# -----------------------------------------------------------------------------
+# The harness suites.
+#
+# They are not board tests: their sources live in the harness,
+# tests/sources/<suite>/, and the directory under test/pico2/ carries only the
+# name. The harness's platform add_subdirectory()s those sources into
+# test::<suite>, so naming that library here brings its sources AND its include
+# directory -- including the suite's own cmsis-plus/os-app-config.h, which is
+# why the directory must stay off the board's include path.
+#
+# Everything else is a port test's: the board's glue and trace come from
+# board_test_sources below, and the variant logic (hwd against the board, qemu
+# against the generic device) is the builder's, unchanged.
+# -----------------------------------------------------------------------------
+set (_harness_suites rtos-apis mutex-stress cmsis-os-validator)
+
+function (board_test_libs _app _out)
+  if (_app STREQUAL "rtos-apis")
+    set (${_out} test::rtos-apis xpacks::chan-fatfs PARENT_SCOPE)
+  elseif (_app STREQUAL "mutex-stress")
+    set (${_out} test::mutex-stress PARENT_SCOPE)
+  elseif (_app STREQUAL "cmsis-os-validator")
+    set (${_out} test::cmsis-os-validator xpacks::arm-cmsis-os-validator
+         PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()

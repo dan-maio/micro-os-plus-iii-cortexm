@@ -153,6 +153,17 @@ endfunction ()
 function (board_test_qemu_includes _app _out)
   set (${_out} "" PARENT_SCOPE)
 endfunction ()
+# EXTRA LIBRARIES one test links beyond the port.
+#
+# A board's own tests link micro-os-plus::cortexm and nothing else, which is
+# what the defaults above assume. A test that is a HARNESS SUITE rather than a
+# board test needs one more library -- test::rtos-apis, test::mutex-stress,
+# test::cmsis-os-validator -- and that library is not the board's to name.
+# Returning it here adds it to the variant's link line, for both the hwd and
+# the qemu image, exactly as BOARD_TEST_NEED_DEVICES adds the board's devices.
+function (board_test_libs _app _out)
+  set (${_out} "" PARENT_SCOPE)
+endfunction ()
 if (EXISTS "${_test_dir}/tests.cmake")
   include ("${_test_dir}/tests.cmake")
 endif ()
@@ -219,6 +230,11 @@ foreach (_dir IN LISTS _test_dirs)
   endif ()
   if ("${_app}" IN_LIST BOARD_TEST_NEED_DEVICES)
     list (APPEND _libs ${UOS_BOARD_DEVICES})
+  endif ()
+  # A harness suite adds its own test library (test::rtos-apis and friends).
+  board_test_libs ("${_app}" _app_libs)
+  if (_app_libs)
+    list (APPEND _libs ${_app_libs})
   endif ()
 
   # A test listed HWD_ONLY gets the hardware image even on a board that has a
