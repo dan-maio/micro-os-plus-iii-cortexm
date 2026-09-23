@@ -448,6 +448,7 @@ namespace os
           else
             {
               out_sp = sp;
+              old_thread->context_.port_.stack_ptr = nullptr;
             }
 
           // ISR-safe instrumentation (no printf): record the switch for the
