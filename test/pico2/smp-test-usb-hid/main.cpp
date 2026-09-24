@@ -27,6 +27,8 @@
 
 #include "tusb.h" // tusb_init() (macro) + tud_task() (inline)
 
+#include <hw_result.hpp>
+
 #include <cstdio>
 #include <cstdint>
 
@@ -84,6 +86,13 @@ namespace
         int c = mu_usb_hid_getchar ();
         if (c >= 0)
           {
+            if (c == 0x1B) // Escape: the host ended the session
+              {
+                // The HID path is proven end to end; report the verdict and
+                // end the run through the semihosting SYS_EXIT.
+                uart::write ("\nRESULT: PASS (host sent Escape)\n");
+                hw_result::ok ();
+              }
             char b[48];
             int n;
             if (c >= 32 && c < 127)
@@ -157,13 +166,12 @@ os_main (int /*argc*/, char* /*argv*/[])
 
   uart::write ("core 0: USB HID device up; run host/kbd_forward and type.\n");
 
-  // Heartbeat.
+  // Keep os_main alive. The test is driven by the host over USB HID: the
+  // consumer thread reports RESULT and ends the run when the host presses
+  // Escape (see consumer_task). It does not finish on its own.
   for (;;)
     {
-      led::on ();
-      sysclock.sleep_for (900);
-      led::off ();
-      sysclock.sleep_for (100);
+      sysclock.sleep_for (1000);
     }
   return 0;
 }

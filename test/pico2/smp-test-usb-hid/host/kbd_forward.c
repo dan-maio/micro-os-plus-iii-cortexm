@@ -39,7 +39,7 @@
 // ---- US keymap: evdev keycode -> ASCII (base / shifted) --------------------
 // Covers the main block (codes 1..57). 0 = no printable char.
 static const char kmap_base[64] = {
-  /*0*/ 0,   /*1 ESC*/ 0,
+  /*0*/ 0,   /*1 ESC*/ '\x1b',
   /*2..13*/ '1','2','3','4','5','6','7','8','9','0','-','=',
   /*14 BKSP*/ '\b', /*15 TAB*/ '\t',
   /*16..27*/ 'q','w','e','r','t','y','u','i','o','p','[',']',
@@ -51,7 +51,7 @@ static const char kmap_base[64] = {
   0,0,0,0,0,0
 };
 static const char kmap_shift[64] = {
-  0, 0,
+  0, '\x1b',
   '!','@','#','$','%','^','&','*','(',')','_','+',
   '\b','\t',
   'Q','W','E','R','T','Y','U','I','O','P','{','}',
