@@ -376,13 +376,24 @@ namespace os
             {
               if (state == state::locked)
                 {
+                  // Mask IRQs and take the kernel spinlock, then publish
+                  // "locked". IRQs stay masked until lock_state is set, so no
+                  // handler can observe a locked core that is not yet locked.
                   lock_primask[cpu] = port_set_lock ();
+                  lock_state[cpu] = state;
                 }
               else
                 {
+                  // Publish "unlocked" BEFORE releasing the spinlock and
+                  // restoring PRIMASK. Otherwise a switch taken in the window
+                  // (klock released, IRQs enabled, lock_state still locked)
+                  // hands the next thread on this core a stale "locked" flag:
+                  // its sleep_for()/mutex::lock() trips !scheduler::locked(),
+                  // and the pending reschedule is lost. The AArch32/AArch64
+                  // ports clear lock_state first for the same reason.
+                  lock_state[cpu] = state;
                   port_put_lock (lock_primask[cpu]);
                 }
-              lock_state[cpu] = state;
             }
           return tmp;
 #else
