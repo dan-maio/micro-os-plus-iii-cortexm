@@ -171,6 +171,16 @@ namespace
         int n = mu_usb_cdc_readline (line, sizeof (line));
         if (n >= 0)
           {
+            // Escape (0x1B) in a received line ends the host-driven session.
+            for (int i = 0; i < n; ++i)
+              {
+                if (static_cast<unsigned char> (line[i]) == 0x1B)
+                  {
+                    uart::write ("\nRESULT: PASS (host sent Escape)\n");
+                    hw_result::ok ();
+                  }
+              }
+
             // Local mirror on the UART console.
             uart::write ("[line] ");
             uart::write (line, (std::size_t) n);
@@ -323,35 +333,11 @@ os_main (int /*argc*/, char* /*argv*/[])
 
   uart::write ("core 0: CDC-ACM up. Open /dev/ttyACM0 (115200 8N1), type a line,\n");
   uart::write ("        press Return; the line is echoed and mirrored here.\n");
+  uart::write ("        send Escape to finish.\n");
 
-  // Bounded wait for the host to mount the device, then a verdict. The test is
-  // otherwise interactive (the host types lines over the CDC); for the hardware
-  // runner the proof is that the device enumerated and the host mounted it.
-  for (unsigned i = 0; (g_usb_stage < 4) && (i < 40u); ++i)
-    {
-      sysclock.sleep_for (500);
-    }
-
-  const bool ok = (g_usb_stage >= 4);
-  char rb[80];
-  int rn = std::snprintf (rb, sizeof (rb),
-                          "\nRESULT: %s  (usb_stage=%d)\n",
-                          ok ? "PASS" : "FAIL",
-                          static_cast<int> (g_usb_stage));
-  uart::write (rb, static_cast<std::size_t> (rn));
-
-  // Ends through the strong _Exit() -> semihosting SYS_EXIT; hw_result also
-  // reports RESULT on the runner's console.
-  if (ok)
-    {
-      hw_result::ok ();
-    }
-  else
-    {
-      hw_result::fail ();
-    }
-
-  // os_main's thread has nothing more to do; keep it alive, asleep.
+  // Keep os_main alive; the test is driven by the host over the CDC. The
+  // console thread reports RESULT and ends the run when the host sends Escape
+  // (see console_task).
   for (;;)
     sysclock.sleep_for (1000);
   return 0;
