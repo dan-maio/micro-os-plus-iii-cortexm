@@ -171,14 +171,55 @@ endfunction ()
 # -----------------------------------------------------------------------------
 set (_harness_suites rtos-apis mutex-stress cmsis-os-validator)
 
+# What a harness platform gives a suite and a board app does not, gathered in
+# one interface so each suite names it once:
+#
+#   OS_USE_OS_APP_CONFIG_H  the kernel headers read the suite's own
+#                           cmsis-plus/os-app-config.h only under it (the
+#                           harness platforms get it from
+#                           micro-os-plus::common-options);
+#   the platform include    that os-app-config.h includes cmsis-plus/platform.h,
+#                           which is the harness platform's -- the one this
+#                           port's builder is add_subdirectory()'d from;
+#   the syscall groups      the suites call gettimeofday() and the POSIX I/O
+#                           layer. The qemu image already links all three; the
+#                           hwd image links only the SoC, so it needs them here;
+#   --wrap=os_main          the verdict. A suite RETURNS its code from os_main();
+#                           hw.sh reads a RESULT line. Each placeholder
+#                           harness-suite.cpp defines __wrap_os_main(), which
+#                           calls the suite and prints that line; the code then
+#                           goes back to the kernel's std::exit(), which is the
+#                           same semihosting SYS_EXIT hw_result::ok()/fail() use.
+#
+# A suite exists only inside the harness -- test::<suite> is the harness's --
+# so PLATFORM_NAME and the harness's platforms/ are always there when this is.
+if (NOT TARGET pico2-harness-suite)
+  add_library (pico2-harness-suite INTERFACE)
+  # UOS_HARNESS_SUITE hands the board's os-app-config.h over to the suite's
+  # (test/boards/pico2/include/cmsis-plus/os-app-config.h). The POSIX pair is
+  # what the kernel's semihosting syscalls need (S_IREAD), exactly as the
+  # pico2-1cpu platform defines them.
+  target_compile_definitions (pico2-harness-suite INTERFACE
+                              OS_USE_OS_APP_CONFIG_H UOS_HARNESS_SUITE
+                              _POSIX_C_SOURCE=200809L _GNU_SOURCE)
+  target_include_directories (pico2-harness-suite INTERFACE
+                              "${CMAKE_SOURCE_DIR}/platforms/${PLATFORM_NAME}/include")
+  target_link_libraries (pico2-harness-suite INTERFACE
+                         micro-os-plus::iii-semihosting
+                         micro-os-plus::iii-newlib-reent
+                         micro-os-plus::iii-posix-io)
+  target_link_options (pico2-harness-suite INTERFACE "-Wl,--wrap=os_main")
+endif ()
+
 function (board_test_libs _app _out)
   if (_app STREQUAL "rtos-apis")
-    set (${_out} test::rtos-apis xpacks::chan-fatfs PARENT_SCOPE)
+    set (${_out} test::rtos-apis xpacks::chan-fatfs pico2-harness-suite
+         PARENT_SCOPE)
   elseif (_app STREQUAL "mutex-stress")
-    set (${_out} test::mutex-stress PARENT_SCOPE)
+    set (${_out} test::mutex-stress pico2-harness-suite PARENT_SCOPE)
   elseif (_app STREQUAL "cmsis-os-validator")
     set (${_out} test::cmsis-os-validator xpacks::arm-cmsis-os-validator
-         PARENT_SCOPE)
+         pico2-harness-suite PARENT_SCOPE)
   else ()
     set (${_out} "" PARENT_SCOPE)
   endif ()

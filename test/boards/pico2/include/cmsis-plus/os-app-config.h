@@ -10,17 +10,38 @@
 #ifndef CMSIS_PLUS_OS_APP_CONFIG_H_
 #define CMSIS_PLUS_OS_APP_CONFIG_H_
 
+// A harness suite built as a board app (test/pico2/tests.cmake,
+// pico2-harness-suite) carries its own os-app-config.h, and on every harness
+// platform that file IS the configuration -- rtos-apis needs its thread
+// statistics and its 512 KiB of RTOS memory. This board's include directory is
+// searched first, so it is this file the kernel finds: hand over to the
+// suite's, and let the values below fill only what the suite leaves unset.
+// A board test defines no UOS_HARNESS_SUITE and gets exactly the values below.
+#if defined(UOS_HARNESS_SUITE)
+#include_next <cmsis-plus/os-app-config.h>
+#endif
+
 // SysTick RTOS tick: 1000 Hz -> 1 tick == 1 ms (sysclock.sleep_for is ms).
+#ifndef OS_INTEGER_SYSTICK_FREQUENCY_HZ
 #define OS_INTEGER_SYSTICK_FREQUENCY_HZ (1000)
+#endif
 
 // NVIC critical-section masking priority (1..15 for __NVIC_PRIO_BITS == 4).
+#ifndef OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY
 #define OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY (5)
+#endif
 
 // Stacks (the M33 port asserts each thread stack holds two exception frames).
+#ifndef OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES
 #define OS_INTEGER_RTOS_MAIN_STACK_SIZE_BYTES (8192)
+#endif
+#ifndef OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES
 #define OS_INTEGER_RTOS_IDLE_STACK_SIZE_BYTES (4096)
+#endif
 // Default stack for app threads (worker/LED); µOS++ trace::printf is heavy.
+#ifndef OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES
 #define OS_INTEGER_RTOS_DEFAULT_STACK_SIZE_BYTES (4096)
+#endif
 
 // NOTE: OS_TRACE_RTOS_THREAD_CONTEXT (and the other OS_TRACE_RTOS_* flags) must
 // stay OFF: they insert trace::printf() calls inside switch_stacks()/reschedule()

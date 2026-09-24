@@ -246,6 +246,7 @@ foreach (_dir IN LISTS _test_dirs)
 
   foreach (_variant IN LISTS _app_variants)
     set (_variant_libs ${_libs})
+    set (_variant_ncpu ${_app_ncpu})
     set (_variant_sources ${_app_sources})
     set (_variant_includes ${_app_includes})
     if (_variant STREQUAL "hwd")
@@ -275,8 +276,14 @@ foreach (_dir IN LISTS _test_dirs)
       if (_qemu_libs)
         # The board is replaced, so the board's linker script is too: the
         # device that replaces it carries its own (-T from its CMakeLists).
-        set (_variant_libs ${_qemu_libs})
+        # A harness suite's test library is not the board's, so it stays.
+        set (_variant_libs ${_qemu_libs} ${_app_libs})
         set (_variant_linker "")
+        # And so is the board's core count: the replacement is the generic
+        # single-core micro-os-plus::cortexm-qemu, whose os-core.cpp has one
+        # current_thread_, not one per CPU. An image built for the board's
+        # NCPU does not compile against it (os-core.cpp:497/833).
+        set (_variant_ncpu 1)
       endif ()
       board_test_qemu_sources ("${_app}" _qemu_sources)
       if (_qemu_sources)
@@ -292,7 +299,7 @@ foreach (_dir IN LISTS _test_dirs)
       "${_app}-${_variant}"
       ${_no_kernel}
       SOURCES ${_srcs} ${_app_support} ${_variant_sources}
-      NCPU ${_app_ncpu}
+      NCPU ${_variant_ncpu}
       LINKER_SCRIPT "${_variant_linker}"
       DEFINES ${_common_defines} ${_app_defines} ${_variant_defines}
       # ${_dir} is the application's own directory, which the predecessor's
