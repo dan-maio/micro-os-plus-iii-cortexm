@@ -4,7 +4,7 @@
  * (os::rtos) — no std:: layer.
  *
  * The board enumerates as a USB CDC-ACM device, so the host sees a virtual
- * serial port (/dev/ttyACM0, COMx). Anything you type in a host terminal is
+ * serial port (/dev/ttyACM*, COMx). Anything you type in a host terminal is
  * received by the device, echoed back over the same CDC port, and mirrored on
  * the hardware UART. The CDC driver also emits its own trace ("[cdc] ...")
  * over the same virtual serial port (see src/usb-cdc/usb_cdc.c).
@@ -20,8 +20,9 @@
  *   - the LED blinks as a heartbeat.
  *
  * Two terminals: your existing UART0 console @115200 8N1 (GPIO0/1), and the USB
- * virtual serial `screen /dev/ttyACM0 115200`. Type in either and it appears on
- * the other. Enumerates as Cafe:4013.
+ * virtual serial `screen /dev/ttyACM<n> 115200`. Type in either and it appears on
+ * the other. Enumerates as Cafe:4013 -- a NEW /dev/ttyACM*, not necessarily
+ * ttyACM0: a debug probe's own UART bridge is often ttyACM0 already.
  */
 
 #include <cmsis-plus/rtos/os.h>
@@ -280,7 +281,7 @@ os_main (int /*argc*/, char* /*argv*/[])
 
   // Banner -> USB CDC. This is queued on the CDC TX ring now (before the USB
   // stack is even up) and flushes to the host terminal the moment it opens
-  // /dev/ttyACM0 (DTR asserts). It is NOT sent to the UART console.
+  // its /dev/ttyACM* (DTR asserts). It is NOT sent to the UART console.
   mu_usb_cdc_write_str ("\r\n=============================================\r\n");
   mu_usb_cdc_write_str ("  Pico 2 / RP2350 - micro-os-plus-iii\r\n");
   mu_usb_cdc_write_str ("  smp-test-usb-cdc-acm : USB virtual serial I/O\r\n");
@@ -309,29 +310,38 @@ os_main (int /*argc*/, char* /*argv*/[])
   multicore::launch_core1 (port_smp_secondary_start, port_core1_stack_top ());
   port_smp_core0_ipi_enable ();
 
+  // Every thread below is pinned AT CONSTRUCTION (th_cpu_affinity), not by a
+  // cpu_affinity() call after it: core 1 is already running, and it can pick
+  // a new thread off the ready list before a later pin lands. The USB thread
+  // must start on core 0, because tusb_init() enables USBCTRL_IRQ in the NVIC
+  // of the core it runs on (each RP2350 core has its own); started on core 1,
+  // the interrupt is serviced there while tud_task() runs on core 0, and the
+  // device never answers the host's setup requests.
+
   // USB device task — pinned to core 0.
   attr.th_stack_address = usb_stack;
   attr.th_stack_size_bytes = sizeof (usb_stack);
+  attr.th_cpu_affinity = (1u << 0);
   static thread usb_th{ "usb", usb_device_task, nullptr, attr };
-  usb_th.cpu_affinity (1u << 0);
 
   // Console consumer thread (line-buffered CDC input). PINNED TO CORE 0: it is
   // a CDC TX ring producer, and every ring producer must stay on the USB core
   // so the ring only needs a PRIMASK guard (no cross-core lock).
   attr.th_stack_address = cons_stack;
   attr.th_stack_size_bytes = sizeof (cons_stack);
+  attr.th_cpu_affinity = (1u << 0);
   static thread console_th{ "console", console_task, nullptr, attr };
-  console_th.cpu_affinity (1u << 0);
 
   // Heartbeat — its own thread (drives the onboard WS2812 RGB LED). PINNED TO
   // CORE 1: the WS2812 frame masks IRQs (cpsid i) for ~35 µs; keeping it off
   // core 0 leaves the USB device task's core undisturbed.
   attr.th_stack_address = blink_stack;
   attr.th_stack_size_bytes = sizeof (blink_stack);
+  attr.th_cpu_affinity = (1u << 1);
   static thread blink_th{ "blink", blink_task, nullptr, attr };
-  blink_th.cpu_affinity (1u << 1);
 
-  uart::write ("core 0: CDC-ACM up. Open /dev/ttyACM0 (115200 8N1), type a line,\n");
+  uart::write ("core 0: CDC-ACM up. Open the gadget's port (Cafe:4013, a NEW\n");
+  uart::write ("        /dev/ttyACM*; not the probe's UART), type a line,\n");
   uart::write ("        press Return; the line is echoed and mirrored here.\n");
   uart::write ("        send Escape to finish.\n");
 

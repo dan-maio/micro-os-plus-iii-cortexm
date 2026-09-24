@@ -22,6 +22,24 @@ set (_single_core smp-test1 sc-test-ko)
 # and seven files respectively -- so they link the port's bare target.
 set (BOARD_TEST_NO_KERNEL smp-test0 exc-test psram-exec)
 
+# The two USB gadget tests, carried from the pico2 board. The same TinyUSB
+# stack and class drivers (test/boards/pico2/usb/), each with its own
+# tusb_config.h -- which is why their include directory goes first. The
+# board's differences need no source change: the LED is PICO2_LED_PIN (GPIO5),
+# the UART GPIO0/1, and the 16 MB linker script is the board's.
+set (_usb_cdc_tests smp-test-usb-cdc-acm)
+set (_usb_hid_tests smp-test-usb-hid)
+
+function (board_test_includes _app _out)
+  if ("${_app}" IN_LIST _usb_cdc_tests)
+    set (${_out} "${UOS_BOARD_USB_CDC_INCLUDE}" ${UOS_BOARD_USB_INCLUDE} PARENT_SCOPE)
+  elseif ("${_app}" IN_LIST _usb_hid_tests)
+    set (${_out} "${UOS_BOARD_USB_HID_INCLUDE}" ${UOS_BOARD_USB_INCLUDE} PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
 function (board_test_ncpu _app _out)
   if ("${_app}" IN_LIST _single_core)
     set (${_out} 1 PARENT_SCOPE)
@@ -60,6 +78,14 @@ function (board_test_sources _app _out)
     # The matrix solver keeps the kernel in SRAM but its big arrays in PSRAM;
     # the QSPI bring-up routine comes from the PSRAM glue.
     list (APPEND _srcs "${UOS_BOARD_PSRAM}")
+  endif ()
+  # The USB pair: TinyUSB, the core and one class driver. Unlike the pico2's
+  # CDC test, no ws2812.cpp -- this board has no RGB LED; its CDC test blinks
+  # the plain LED.
+  if ("${_app}" IN_LIST _usb_cdc_tests)
+    list (APPEND _srcs ${UOS_BOARD_USB_CORE_SOURCES} ${UOS_BOARD_USB_CDC_SOURCES})
+  elseif ("${_app}" IN_LIST _usb_hid_tests)
+    list (APPEND _srcs ${UOS_BOARD_USB_CORE_SOURCES} ${UOS_BOARD_USB_HID_SOURCES})
   endif ()
   set (${_out} "${_srcs}" PARENT_SCOPE)
 endfunction ()
