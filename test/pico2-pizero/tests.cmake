@@ -20,7 +20,7 @@ set (_single_core smp-test1 sc-test-ko)
 # and checks the two can talk, exc-test asks whether exception ENTRY works at
 # all. Their Makefiles list no kernel source and no port core -- nine files
 # and seven files respectively -- so they link the port's bare target.
-set (BOARD_TEST_NO_KERNEL smp-test0 exc-test)
+set (BOARD_TEST_NO_KERNEL smp-test0 exc-test psram-exec)
 
 function (board_test_ncpu _app _out)
   if ("${_app}" IN_LIST _single_core)
@@ -40,6 +40,11 @@ function (board_test_sources _app _out)
     if (_app STREQUAL "smp-test0")
       list (APPEND _srcs "${UOS_BOARD_MULTICORE}")
     endif ()
+    if (_app STREQUAL "psram-exec")
+      # The QSPI PSRAM bring-up runs from SRAM (see glue/psram.cpp). The board
+      # has no multicore.cpp here: the supervisor is single-core.
+      list (APPEND _srcs "${UOS_BOARD_PSRAM}")
+    endif ()
     set (${_out} "${_srcs}" PARENT_SCOPE)
     return ()
   endif ()
@@ -55,10 +60,29 @@ function (board_test_sources _app _out)
 endfunction ()
 
 function (board_test_defines _app _out)
+  # The PSRAM dual-app supervisor runs the whole image from RAM (the board's
+  # flash XIP is marginal for the dense PSRAM fetches), brings up the QSPI PSRAM
+  # on CS GPIO47, and needs no kernel.
+  if (_app STREQUAL "psram-exec")
+    set (${_out} PICO2_RAM_EXEC=1 PICO2_PSRAM_CS_PIN=47 PARENT_SCOPE)
+    return ()
+  endif ()
   # The predecessor's smp-test1 Makefile was the only one here to pin the
   # system clock: the bring-up test runs the part at 150 MHz.
   if (_app STREQUAL "smp-test1")
     set (${_out} PICO2_SYS_CLK_KHZ=150000 PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
+function (board_test_linker _app _out)
+  # psram-exec carries its own RAM-exec linker: a flash stub, the SRAM
+  # supervisor, and the two PSRAM app images at 0x11000000 / 0x11400000.
+  if (_app STREQUAL "psram-exec")
+    set (${_out}
+         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/psram-exec/psram-exec.ld"
+         PARENT_SCOPE)
   else ()
     set (${_out} "" PARENT_SCOPE)
   endif ()
