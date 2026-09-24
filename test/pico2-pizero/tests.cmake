@@ -56,7 +56,7 @@ function (board_test_sources _app _out)
   if (NOT "${_app}" IN_LIST _single_core)
     list (APPEND _srcs "${UOS_BOARD_MULTICORE}")
   endif ()
-  if (_app STREQUAL "psram-mat-test")
+  if (_app STREQUAL "psram-mat-test-250")
     # The matrix solver keeps the kernel in SRAM but its big arrays in PSRAM;
     # the QSPI bring-up routine comes from the PSRAM glue.
     list (APPEND _srcs "${UOS_BOARD_PSRAM}")
@@ -75,7 +75,7 @@ function (board_test_defines _app _out)
   # The SRAM-boot PSRAM solver: the kernel stays in SRAM, only the big matrix
   # arrays live in PSRAM. boot.S copies (but does not call) the QMI routine
   # (PICO2_PSRAM_COPY); the app brings PSRAM up itself, at 250 MHz.
-  if (_app STREQUAL "psram-mat-test")
+  if (_app STREQUAL "psram-mat-test-250")
     set (${_out}
          PICO2_PSRAM_COPY=1 PICO2_PSRAM_CS_PIN=47 PICO2_SYS_CLK_KHZ=250000
          PARENT_SCOPE)
@@ -97,9 +97,9 @@ function (board_test_linker _app _out)
     set (${_out}
          "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/psram-exec/psram-exec.ld"
          PARENT_SCOPE)
-  elseif (_app STREQUAL "psram-mat-test")
+  elseif (_app STREQUAL "psram-mat-test-250")
     set (${_out}
-         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/psram-mat-test/psram-sram-boot.ld"
+         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/psram-mat-test-250/psram-sram-boot.ld"
          PARENT_SCOPE)
   else ()
     set (${_out} "" PARENT_SCOPE)
