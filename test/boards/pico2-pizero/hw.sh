@@ -103,6 +103,17 @@ done
 
 kill "$OCD_PID" 2>/dev/null; wait "$OCD_PID" 2>/dev/null
 
+# OpenOCD's console is block-buffered when its stdout is a pipe, so a terse
+# test's verdict can reach the log only when OpenOCD exits. Look once more now
+# that it has, instead of reporting a timeout for a run that actually passed.
+if [[ $rc -eq 2 ]]; then
+  if grep -q 'RESULT: PASS' "$LOG" 2>/dev/null; then
+    rc=0
+  elif grep -q 'RESULT: FAIL' "$LOG" 2>/dev/null; then
+    rc=1
+  fi
+fi
+
 printf '\n%-24s ' "$APP"
 case "$rc" in
   0) echo "PASS  (${waited}s)" ;;

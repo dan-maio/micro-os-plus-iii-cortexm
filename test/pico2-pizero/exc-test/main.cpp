@@ -18,7 +18,43 @@
 #include <bsp/clocks.hpp>
 #include <bsp/uart.hpp>
 
+#include <hw_result.hpp>
+
 #include <cstdint>
+
+// exc-test links no libc, so it supplies the exit endpoint hw_result ends
+// through itself, and the verdict line, over ARM semihosting (Cortex-M BKPT
+// 0xAB). The board's hw.sh enables semihosting before the resume, so both are
+// serviced: the RESULT line reaches the runner's log and SYS_EXIT ends the run.
+namespace
+{
+  void
+  semi_write0 (const char* s)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x04u;  // SYS_WRITE0
+    register const char* r1 __asm__ ("r1") = s;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+  }
+
+  [[noreturn]] void
+  semi_exit (unsigned reason)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x18u;  // SYS_EXIT
+    register unsigned r1 __asm__ ("r1") = reason;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+    for (;;)
+      {
+      }
+  }
+} // namespace
+
+extern "C" void _exit (int code) __attribute__ ((noreturn));
+
+extern "C" void
+_exit (int code)
+{
+  semi_exit (code == 0 ? 0x20026u : 0x20023u);
+}
 
 namespace
 {
@@ -115,7 +151,10 @@ main (void)
   SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;   // PendSV pending
   uart::write ("[B] PENDSVSET set (PSP mode); pendsv should become 1\n");
 
-  for (;;)
+  // Bounded run so the hardware runner gets a verdict: the point of the probe
+  // is that BOTH exception entries actually ran.
+  constexpr unsigned kIterations = 20;
+  for (unsigned it = 0; it < kIterations; ++it)
     {
       for (volatile std::uint32_t n = 0; n < 2000000UL; ++n)
         {
@@ -123,6 +162,26 @@ main (void)
         }
       g_stage = 4;
       report ();
+    }
+
+  const bool ok = (g_systick != 0U) && (g_pendsv != 0U);
+  uart::write ("\nexception entry : ");
+  uart::write (ok ? "PASS" : "FAIL");
+  uart::write ("\n");
+  uart::write (ok ? "RESULT: PASS\n" : "RESULT: FAIL\n");
+  // Also on the debug channel, which is what the hardware runner greps.
+  semi_write0 (ok ? "RESULT: PASS\n" : "RESULT: FAIL\n");
+
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
+  for (;;)
+    {
     }
   return 0;
 }
