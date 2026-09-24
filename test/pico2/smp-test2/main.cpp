@@ -26,6 +26,8 @@
 #include <bsp/multicore.hpp>
 #include <bsp/uart.hpp>
 
+#include <hw_result.hpp>
+
 #include <cstdio>
 #include <cstdint>
 
@@ -53,7 +55,12 @@ namespace os
 
 namespace
 {
+  // Bounded run: each worker does kIters beats (~kIters * 500 ms), then the
+  // main thread reports the verdict.
+  constexpr unsigned kIters = 20;
+
   unsigned g_global = 0;
+  volatile unsigned g_done = 0;
   mutex g_mutex{ "g" };
   semaphore_counting g_beats{ "beats", 8, 0 };
 
@@ -93,7 +100,7 @@ namespace
       {
         this_thread::yield ();
       }
-    for (;;)
+    for (unsigned i = 0; i < kIters; ++i)
       {
         c->local++;
         g_mutex.lock ();
@@ -103,6 +110,7 @@ namespace
         g_beats.post (); // signal the LED thread
         sysclock.sleep_for (500);
       }
+    g_done++;
     return nullptr;
   }
 
@@ -202,9 +210,35 @@ os_main (int /*argc*/, char* /*argv*/[])
   port_smp_core0_ipi_enable ();
   uart::write ("core 0: core 1 launched; SMP running.\n");
 
+  // Wait for both bounded workers to finish (or time out).
+  for (unsigned i = 0; (g_done < 2u) && (i < 200u); ++i)
+    {
+      sysclock.sleep_for (100);
+    }
+
+  const bool ok = (g_done >= 2u) && (g_global >= 2u * kIters)
+                  && (worker_ctx[0].local >= kIters)
+                  && (worker_ctx[1].local >= kIters);
+  char b[96];
+  int n = std::snprintf (
+      b, sizeof (b), "\nRESULT: %s  (global=%u wrk0=%u wrk1=%u done=%u)\n",
+      ok ? "PASS" : "FAIL", g_global, worker_ctx[0].local, worker_ctx[1].local,
+      static_cast<unsigned> (g_done));
+  uart::write (b, static_cast<std::size_t> (n));
+
+  // Ends through the strong _Exit() -> semihosting SYS_EXIT; hw_result also
+  // reports RESULT on the semihosting console the runner reads.
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
   for (;;)
     {
-      sysclock.sleep_for (10000);
+      sysclock.sleep_for (1000);
     }
   return 0;
 }

@@ -31,10 +31,23 @@
 
 namespace hw_result
 {
+  // The board's console is the UART, but the runner (hw.sh) greps OpenOCD's
+  // output, which only sees semihosting. Emit the verdict there too, so a
+  // passing test is not reported as a timeout. Semihosting is already required
+  // to end the run cleanly: _Exit() below is a semihosting SYS_EXIT.
+  inline void __attribute__ ((always_inline))
+  semi_write0 (const char* s)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x04u; // SYS_WRITE0
+    register const char* r1 __asm__ ("r1") = s;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+  }
+
   // End the run reporting SUCCESS.
   inline void
   ok () noexcept
   {
+    semi_write0 ("RESULT: PASS\n");
     std::exit (0);
   }
 
@@ -42,6 +55,7 @@ namespace hw_result
   inline void
   fail () noexcept
   {
+    semi_write0 ("RESULT: FAIL\n");
     std::exit (1);
   }
 } // namespace hw_result

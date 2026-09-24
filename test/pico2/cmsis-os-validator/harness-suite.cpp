@@ -16,6 +16,21 @@
 
 #include <bsp/uart.hpp>
 
+// The board's console is the UART, but the harness (hw.sh) reads the verdict
+// from OpenOCD's output, which only sees semihosting. Emit the RESULT line on
+// both: the UART for the terminal, semihosting (BKPT 0xAB / SYS_WRITE0) for the
+// runner. Semihosting is already required to end the run (std::exit below).
+namespace
+{
+  void
+  semi_write0 (const char* s)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x04u;  // SYS_WRITE0
+    register const char* r1 __asm__ ("r1") = s;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+  }
+} // namespace
+
 extern "C" int
 __real_os_main (int argc, char* argv[]);
 
@@ -27,5 +42,6 @@ __wrap_os_main (int argc, char* argv[])
 {
   int code = __real_os_main (argc, argv);
   uart::write (code == 0 ? "\nRESULT: PASS\n" : "\nRESULT: FAIL\n");
+  semi_write0 (code == 0 ? "RESULT: PASS\n" : "RESULT: FAIL\n");
   return code;
 }

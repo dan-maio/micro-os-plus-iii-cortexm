@@ -32,6 +32,8 @@
 
 #include <bsp/ws2812.hpp> // onboard RGB LED (RP2350B-MINI-A)
 
+#include <hw_result.hpp>
+
 #include "tusb.h"     // tusb_init() (macro) + tud_task() (inline)
 #include "usb_cdc.h"  // mu_usb_cdc_* driver API
 
@@ -321,6 +323,33 @@ os_main (int /*argc*/, char* /*argv*/[])
 
   uart::write ("core 0: CDC-ACM up. Open /dev/ttyACM0 (115200 8N1), type a line,\n");
   uart::write ("        press Return; the line is echoed and mirrored here.\n");
+
+  // Bounded wait for the host to mount the device, then a verdict. The test is
+  // otherwise interactive (the host types lines over the CDC); for the hardware
+  // runner the proof is that the device enumerated and the host mounted it.
+  for (unsigned i = 0; (g_usb_stage < 4) && (i < 40u); ++i)
+    {
+      sysclock.sleep_for (500);
+    }
+
+  const bool ok = (g_usb_stage >= 4);
+  char rb[80];
+  int rn = std::snprintf (rb, sizeof (rb),
+                          "\nRESULT: %s  (usb_stage=%d)\n",
+                          ok ? "PASS" : "FAIL",
+                          static_cast<int> (g_usb_stage));
+  uart::write (rb, static_cast<std::size_t> (rn));
+
+  // Ends through the strong _Exit() -> semihosting SYS_EXIT; hw_result also
+  // reports RESULT on the runner's console.
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
 
   // os_main's thread has nothing more to do; keep it alive, asleep.
   for (;;)

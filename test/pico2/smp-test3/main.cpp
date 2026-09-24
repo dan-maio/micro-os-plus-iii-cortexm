@@ -40,6 +40,8 @@
 #include <bsp/uart.hpp>
 #include <cmsis_device.h>
 
+#include <hw_result.hpp>
+
 #include <cstdio>
 #include <cstdint>
 
@@ -203,7 +205,7 @@ namespace
     uart::write (b, static_cast<std::size_t> (n));
   }
 
-  void
+  bool
   report (void)
   {
     char b[256];
@@ -230,6 +232,7 @@ namespace
                        "Result: %s\n",
         PH_B_ROUNDS * 2U, pass ? "PASS (IPI wake proven)" : "FAIL");
     uart::write (b, static_cast<std::size_t> (n));
+    return pass;
   }
 
   // ---- core-1 ponger ------------------------------------------------------
@@ -298,7 +301,23 @@ namespace
         else if (ph == 1 && g_round >= PH_B_ROUNDS)
           {
             g_phase = 2; // stop: the ponger idles on s_ping
-            report ();
+            const bool ok = report ();
+            {
+              char ab[64];
+              int an = std::snprintf (ab, sizeof (ab), "RESULT: %s\n",
+                                      ok ? "PASS" : "FAIL");
+              uart::write (ab, static_cast<std::size_t> (an));
+            }
+            // Ends through the strong _Exit() -> semihosting SYS_EXIT;
+            // hw_result also reports RESULT on the runner's console.
+            if (ok)
+              {
+                hw_result::ok ();
+              }
+            else
+              {
+                hw_result::fail ();
+              }
             // Slow heartbeat: the board is alive, measurement done.
             for (;;)
               {

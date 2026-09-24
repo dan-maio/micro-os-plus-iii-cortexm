@@ -18,9 +18,47 @@
 #include <bsp/led.hpp>
 #include <bsp/multicore.hpp>
 
+#include <hw_result.hpp>
+
 #include <cstdint>
 
 extern "C" std::uint32_t __vector_table[];
+
+// smp-test0 links neither the kernel nor its libc, so it supplies the exit
+// endpoint hw_result ends through itself, and the verdict line, directly over
+// ARM semihosting (Cortex-M BKPT 0xAB). The board's hw.sh enables semihosting
+// before the resume, so both are serviced by OpenOCD: the RESULT line reaches
+// the runner's log (the UART alone does not) and SYS_EXIT ends the run.
+namespace
+{
+  void
+  semi_write0 (const char* s)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x04u;  // SYS_WRITE0
+    register const char* r1 __asm__ ("r1") = s;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+  }
+
+  [[noreturn]] void
+  semi_exit (unsigned reason)
+  {
+    register unsigned r0 __asm__ ("r0") = 0x18u;  // SYS_EXIT
+    register unsigned r1 __asm__ ("r1") = reason;
+    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+    for (;;)
+      {
+      }
+  }
+} // namespace
+
+extern "C" void _exit (int code) __attribute__ ((noreturn));
+
+extern "C" void
+_exit (int code)
+{
+  // Angel reason codes: ADP_Stopped_ApplicationExit / _RunTimeError.
+  semi_exit (code == 0 ? 0x20026u : 0x20023u);
+}
 
 // Trap faults visibly instead of the boot.S silent "b ." — tells a core-0
 // fault (e.g. XIP stall when core 1's bootrom runs) apart from a spin-hang.
@@ -105,17 +143,42 @@ main (void)
                                + sizeof (core1_stack));
   uart::write ("core 1 launch returned.\n\n");
 
-  unsigned long tick = 0;
-  for (;;)
+  // A bounded run so the hardware runner gets a verdict: N ticks of ~500 ms
+  // (about 10 s), then check that core 1 really came up before passing.
+  constexpr unsigned long kIterations = 20;
+
+  for (unsigned long tick = 0; tick < kIterations; ++tick)
     {
       uart::write ("[core0] tick 0x");
-      uart::print_hex32 (tick++);
+      uart::print_hex32 (tick);
       uart::write ("  core1_alive=0x");
       uart::print_hex32 (g_core1_alive);
       uart::write ("  core1_loops=0x");
       uart::print_hex32 (g_core1_loops);
       uart::write ("\n");
       busy_wait_ms (500);
+    }
+
+  const bool ok = (g_core1_alive == 0xC0FFEEU) && (g_core1_loops != 0U);
+  uart::write ("\ncore 1 launch  : ");
+  uart::write (ok ? "PASS" : "FAIL");
+  uart::write ("\n");
+  uart::write (ok ? "RESULT: PASS\n" : "RESULT: FAIL\n");
+  // Also on the debug channel, which is what the hardware runner greps.
+  semi_write0 (ok ? "RESULT: PASS\n" : "RESULT: FAIL\n");
+
+  // Ends the run through the strong _Exit() -> semihosting SYS_EXIT, which the
+  // board's hw.sh is waiting for (and which carries the verdict).
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
+  for (;;)
+    {
     }
   return 0;
 }
