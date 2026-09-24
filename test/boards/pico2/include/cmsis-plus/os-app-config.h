@@ -19,6 +19,25 @@
 // A board test defines no UOS_HARNESS_SUITE and gets exactly the values below.
 #if defined(UOS_HARNESS_SUITE)
 #include_next <cmsis-plus/os-app-config.h>
+
+// rtos-apis's own config asks for a separate RTOS system arena
+// (OS_INTEGER_RTOS_DYNAMIC_MEMORY_SIZE_BYTES = 512 KiB), carved from the
+// application free store at startup. pico2's free store is only 128 KiB, so
+// that allocation throws bad_alloc and the run aborts before it starts. On
+// hardware, cap the arena so it fits (96 KiB still covers FatFs's 32 KiB
+// working buffer plus the RTOS objects). The macro must stay defined: the
+// system out-of-memory hook exists only under it. QEMU has a large free store
+// and keeps the suite's value, so this is gated on the hardware build.
+#if defined(HW_BUILD) && defined(OS_INTEGER_RTOS_DYNAMIC_MEMORY_SIZE_BYTES)
+#undef OS_INTEGER_RTOS_DYNAMIC_MEMORY_SIZE_BYTES
+#define OS_INTEGER_RTOS_DYNAMIC_MEMORY_SIZE_BYTES (96 * 1024)
+#endif
+
+// rtos-apis's chan-fatfs sub-test builds RAM disks up to 66130 blocks * 512 B
+// (~33 MiB); they cannot fit the RP2350's 520 KiB SRAM. Skip it on hardware.
+#if defined(HW_BUILD)
+#define OS_EXCLUDE_RTOS_APIS_FATFS
+#endif
 #endif
 
 // SysTick RTOS tick: 1000 Hz -> 1 tick == 1 ms (sysclock.sleep_for is ms).

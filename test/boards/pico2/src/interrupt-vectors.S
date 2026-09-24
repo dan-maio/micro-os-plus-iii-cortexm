@@ -68,10 +68,17 @@ __vector_table:
      * others are stubs. NOTE: there is NO extra vector between SysTick and
      * IRQ 0 — an earlier "defensive" PendSV there shifted every external-IRQ
      * handler one slot late, so IRQ 25 jumped to default_irq_handler (an
-     * infinite loop) the moment it was enabled. */
+     * infinite loop) the moment it was enabled.
+     *
+     * IRQ 0 goes to WDT_IRQHandler: the Arm CMSIS-RTOS validator's
+     * TC_ThreadInterrupts takes the first external IRQ, and the validator
+     * defines the handler under that name (ARM_CMSIS_VALIDATOR_IRQHandler in
+     * the platform header). Weak here, so every other test keeps the stub. */
     .set irq_index, 0
     .rept 52
-    .if irq_index == 2
+    .if irq_index == 0
+    .word WDT_IRQHandler
+    .elseif irq_index == 2
     .word TIMER0_IRQ_2_Handler
     .elseif irq_index == 3
     .word TIMER0_IRQ_3_Handler

@@ -264,6 +264,14 @@ default_irq_handler:
 .type UART0_IRQ_Handler, %function
 .thumb_set UART0_IRQ_Handler, default_irq_handler
 
+/* IRQ 0 (the validator's TC_ThreadInterrupts). Weak so only the validator's
+ * strong WDT_IRQHandler overrides it; everything else keeps the stub. */
+.thumb_func
+.global WDT_IRQHandler
+.weak WDT_IRQHandler
+.type WDT_IRQHandler, %function
+.thumb_set WDT_IRQHandler, default_irq_handler
+
 .thumb_func
 .global TIMER0_IRQ_2_Handler
 .weak TIMER0_IRQ_2_Handler
