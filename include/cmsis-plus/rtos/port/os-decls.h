@@ -116,7 +116,30 @@ namespace os
           constexpr state_t init = unlocked;
         } /* namespace state */
 
+#if defined(OS_USE_SMP_SCHEDULER)
+
+        // The kernel's SMP scheduler at OS_NCPU=1 (see os-core.cpp). One lock
+        // state per CPU, as the SMP kernel indexes it -- there is one CPU.
+        extern state_t lock_state[OS_NCPU];
+
+        // The kernel lock. With one CPU there is no other core to exclude:
+        // masking interrupts IS the mutual exclusion, so there is no lock
+        // word and no LDREX/STREX. owner/depth record who holds it and how
+        // deeply, the bookkeeping the SMP ports keep, so the SMP kernel runs
+        // here on the same contract.
+        struct smp_klock_t
+        {
+          volatile uint32_t owner;
+          volatile uint32_t depth;
+        };
+
+        extern smp_klock_t _smp_klock;
+
+#else
+
         extern state_t lock_state;
+
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
       } /* namespace scheduler */
 

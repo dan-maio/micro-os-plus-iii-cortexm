@@ -64,6 +64,9 @@ namespace os
           trace::printf ("0/0+");
 #endif
           trace::printf (", preemptive");
+#if defined(OS_USE_SMP_SCHEDULER)
+          trace::printf (", SMP %u CPU", static_cast<unsigned> (OS_NCPU));
+#endif
 #if (defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__)) \
     && defined(OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY)
           trace::printf (", BASEPRI(%u)",
@@ -95,11 +98,55 @@ namespace os
           return locked (state::unlocked);
         }
 
+#if defined(OS_USE_SMP_SCHEDULER)
+
+        // One CPU: it is always CPU 0 (os-core.cpp asserts OS_NCPU == 1).
+        inline unsigned __attribute__ ((always_inline))
+        port_cpu_id (void)
+        {
+          return 0;
+        }
+
+        inline bool __attribute__ ((always_inline))
+        locked (void)
+        {
+          return lock_state[port_cpu_id ()] != state::unlocked;
+        }
+
+        // Enter/leave the kernel lock. The caller has already masked
+        // interrupts (critical_section, switch_stacks); with one CPU that is
+        // the exclusion, and this only records the owner and the nesting
+        // depth. Nothing spins: there is no other CPU to wait for.
+        inline void __attribute__ ((always_inline))
+        _smp_klock_enter (void)
+        {
+          _smp_klock.owner = port_cpu_id ();
+          _smp_klock.depth = _smp_klock.depth + 1;
+        }
+
+        inline void __attribute__ ((always_inline))
+        _smp_klock_exit (void)
+        {
+          if (_smp_klock.depth > 0)
+            {
+              uint32_t d = _smp_klock.depth - 1;
+              _smp_klock.depth = d;
+              if (d == 0)
+                {
+                  _smp_klock.owner = SMP_NO_OWNER;
+                }
+            }
+        }
+
+#else
+
         inline bool __attribute__ ((always_inline))
         locked (void)
         {
           return lock_state != state::unlocked;
         }
+
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
         inline void __attribute__ ((always_inline))
         wait_for_interrupt (void)
@@ -230,6 +277,11 @@ namespace os
 
 #endif
 
+#if defined(OS_USE_SMP_SCHEDULER)
+          // Interrupts are masked: take the kernel lock.
+          scheduler::_smp_klock_enter ();
+#endif
+
           // Apparently not required by architecture, but used by
           // FreeRTOS, with an unconvincing motivation ("...  ensure
           // the code is completely within the specified behaviour
@@ -244,6 +296,11 @@ namespace os
         inline void __attribute__ ((always_inline))
         critical_section::exit (rtos::interrupts::state_t state)
         {
+#if defined(OS_USE_SMP_SCHEDULER)
+          // Release the kernel lock while interrupts are still masked.
+          scheduler::_smp_klock_exit ();
+#endif
+
 #if defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__)
 
 #if defined(OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY)

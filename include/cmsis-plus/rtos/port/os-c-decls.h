@@ -48,6 +48,13 @@ typedef struct
   os_port_thread_stack_element_t* stack_ptr;
 } os_port_thread_context_t;
 
+#if defined(OS_USE_SMP_SCHEDULER)
+
+/* The kernel lock's owner when nobody holds it (os-decls.h, smp_klock_t). */
+#define SMP_NO_OWNER 0xFFFFFFFFu
+
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
+
 #define OS_INTEGER_RTOS_STACK_FILL_MAGIC (0xEFBEADDE)
 
 #define OS_HAS_INTERRUPTS_STACK
