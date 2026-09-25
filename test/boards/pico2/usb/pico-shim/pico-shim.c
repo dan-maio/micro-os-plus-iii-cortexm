@@ -2,7 +2,7 @@
  * pico-shim.c — implements the ~10 pico-sdk platform functions the vendored
  * TinyUSB RP2040/RP2350 device driver calls, mapped onto the pico2 BSP:
  * RESETS block, NVIC (USBCTRL_IRQ 14), TIMER0 (microseconds), and a per-core
- * PRIMASK critical section. See src/usb-hid/README.md.
+ * PRIMASK critical section. See test/boards/pico2/usb/README-tinyusb.md.
  */
 
 #include <stdint.h>

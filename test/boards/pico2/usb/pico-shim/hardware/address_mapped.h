@@ -2,7 +2,7 @@
  * address_mapped.h — minimal pico-sdk shim for the vendored TinyUSB RP2040
  * device driver, providing the io types and the RP2040/RP2350 atomic register
  * aliases (SET/CLR/XOR at +0x2000/+0x3000/+0x1000). Self-contained; no rest of
- * pico-sdk needed. See src/usb-hid/README.md.
+ * pico-sdk needed. See test/boards/pico2/usb/README-tinyusb.md.
  */
 #ifndef _MU_PICO_SHIM_ADDRESS_MAPPED_H
 #define _MU_PICO_SHIM_ADDRESS_MAPPED_H

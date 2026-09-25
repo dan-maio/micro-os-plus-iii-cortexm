@@ -7,7 +7,7 @@
  * serial port (/dev/ttyACM*, COMx). Anything you type in a host terminal is
  * received by the device, echoed back over the same CDC port, and mirrored on
  * the hardware UART. The CDC driver also emits its own trace ("[cdc] ...")
- * over the same virtual serial port (see src/usb-cdc/usb_cdc.c).
+ * over the same virtual serial port (see test/boards/pico2/usb/cdc/usb_cdc.c).
  *
  *   - core 1 launched (SMP kernel);
  *   - a µOS++ thread pinned to CORE 0 runs the USB device task

@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
 # What this board's tests need.
 #
-# The same composition as the Pico 2's, because these are the same eight tests
-# on the same silicon -- the board differs in its pins, its flash size and its
-# probe, none of which is a source file. Transcribed from the predecessor's
+# The same composition as the Pico 2's for the twelve tests the two boards
+# share -- the board differs in its pins, its flash size and its probe, none
+# of which is a source file -- plus its own psram-exec and psram-mat-test-250. Transcribed from the predecessor's
 # pizero_rp2350B Makefiles:
 #
 #   every test    the board's uart.cpp and its RTOS glue
@@ -15,11 +15,11 @@
 
 set (_single_core smp-test1 sc-test-ko)
 
-# The two applications that compile NO KERNEL. They are the bare-metal probes
-# that run before a scheduler exists: smp-test0 starts the second core itself
-# and checks the two can talk, exc-test asks whether exception ENTRY works at
-# all. Their Makefiles list no kernel source and no port core -- nine files
-# and seven files respectively -- so they link the port's bare target.
+# The three applications that compile NO KERNEL. smp-test0 and exc-test are
+# the bare-metal probes that run before a scheduler exists (smp-test0 starts
+# the second core itself, exc-test asks whether exception ENTRY works at all);
+# psram-exec is a bare SRAM supervisor switching two apps loaded into PSRAM.
+# None lists a kernel source or a port core, so they link the port's bare target.
 set (BOARD_TEST_NO_KERNEL smp-test0 exc-test psram-exec)
 
 # The two USB gadget tests, carried from the pico2 board. The same TinyUSB

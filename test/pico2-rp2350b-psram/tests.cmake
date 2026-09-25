@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # What this board's tests need.
 #
-# Twelve tests, and three of the board's source sets are per-test. All of it is
+# Fourteen tests, and three of the board's source sets are per-test. All of it is
 # a transcription of the predecessor's rp2350B and rp2350B_psram Makefiles:
 #
 #   every test        uart.cpp and the RTOS glue
