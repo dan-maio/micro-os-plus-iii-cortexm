@@ -118,15 +118,17 @@ namespace os
 
 #if defined(OS_USE_SMP_SCHEDULER)
 
-        // The kernel's SMP scheduler at OS_NCPU=1 (see os-core.cpp). One lock
-        // state per CPU, as the SMP kernel indexes it -- there is one CPU.
+        // The kernel's SMP scheduler. Both cores declare it here: upstream's
+        // at OS_NCPU=1 (os-core.cpp), and the RP2350's at OS_NCPU=1 or 2
+        // (os-core-rp2350.cpp, whose include-rp2350/ has no os-decls.h of its
+        // own). One lock state per CPU, as the SMP kernel indexes it.
         extern state_t lock_state[OS_NCPU];
 
-        // The kernel lock. With one CPU there is no other core to exclude:
-        // masking interrupts IS the mutual exclusion, so there is no lock
-        // word and no LDREX/STREX. owner/depth record who holds it and how
-        // deeply, the bookkeeping the SMP ports keep, so the SMP kernel runs
-        // here on the same contract.
+        // The kernel lock, recursive. owner/depth record who holds it and how
+        // deeply, the bookkeeping the SMP ports keep. What excludes the other
+        // core is the core's business: with one CPU, masking interrupts IS the
+        // mutual exclusion, so there is no lock word and no LDREX/STREX; on
+        // the RP2350 it is SIO hardware spinlock 0 (include-rp2350/.../os-inlines.h).
         struct smp_klock_t
         {
           volatile uint32_t owner;

@@ -80,8 +80,8 @@ the kernel's SMP branches compile out, and **no kernel patch is applied**.
 That is exactly how the predecessor proved these boards, and it is what makes
 them the witness that the SMP port contract is optional rather than assumed.
 
-`pico2` uses a different core — `src/rtos/os-core-rp2350.cpp`, with its own
-port headers in `include-rp2350/` — and names it in its `board.cmake`
+`pico2` uses a different core — `src/rtos/os-core-rp2350.cpp`, with the port
+headers that differ in `include-rp2350/`, searched before `include/` — and names it in its `board.cmake`
 (`UOS_BOARD_PORT_CORE`, `UOS_BOARD_PORT_INCLUDE`). The two are 91% the same
 file: pico2's is upstream's plus an `OS_USE_SMP_SCHEDULER` branch.
 

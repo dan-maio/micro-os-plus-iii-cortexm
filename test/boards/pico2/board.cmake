@@ -33,10 +33,13 @@ set (UOS_BOARD_CAPS  smp led uart)
 # single-core and has no SMP branch at all, so this board names the RP2350
 # flavour -- the same file plus an OS_USE_SMP_SCHEDULER branch. Its port
 # headers come with it: they carry the SIO spinlock and SIO_CPUID inlines.
+# include-rp2350/ holds only the headers that differ (os-c-decls.h,
+# os-inlines.h); it is searched first, and os-decls.h, the same code on both
+# cores, comes from include/.
 #
 # See the port's CMakeLists.txt for why the two cores are not merged yet.
 set (UOS_BOARD_PORT_CORE    "src/rtos/os-core-rp2350.cpp")
-set (UOS_BOARD_PORT_INCLUDE "include-rp2350")
+set (UOS_BOARD_PORT_INCLUDE "include-rp2350;include")
 
 # The emulated image links against QEMU's generic Cortex-M33 machine
 # (mps2-an505), whose memory map this script describes. The RP2350's own SIO

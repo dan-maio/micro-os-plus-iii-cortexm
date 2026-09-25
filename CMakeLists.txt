@@ -203,9 +203,11 @@ target_include_directories (
   micro-os-plus-iii-cortexm-board-interface
   INTERFACE "${UOS_BOARD_SRC_DIR}/include"
 )
+# Unquoted: a board may name a list (an overlay first, then include/), and
+# each entry must reach CMake as its own argument to be made absolute.
 target_include_directories (
   micro-os-plus-iii-cortexm-interface
-  INTERFACE "${UOS_BOARD_PORT_INCLUDE}"
+  INTERFACE ${UOS_BOARD_PORT_INCLUDE}
 )
 
 target_sources (
