@@ -20,6 +20,9 @@ target/
 *.map
 *.su
 
+# Host tools built next to their sources (the USB HID tests' host/Makefile)
+test/*/smp-test-usb-hid/host/kbd_forward
+
 # Test-run scratch
 .hw-run*
 .hw-jlink-run*
