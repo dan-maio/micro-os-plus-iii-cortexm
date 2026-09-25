@@ -4,7 +4,8 @@
  * reached by the emulated tests (exc-test, smp-test1, sc-test-ko); the rest
  * are stubbed so the header links.
  */
-#include <bsp/clocks.hpp>
+// The board's own header: the QEMU variant stubs the same API.
+#include "../../include/bsp/clocks.hpp"
 
 namespace clocks
 {
