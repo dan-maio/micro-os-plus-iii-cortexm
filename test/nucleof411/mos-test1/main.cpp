@@ -68,6 +68,11 @@ namespace
 
   // Shared counter incremented by every thread, under a plain mutex.
   unsigned g_global_counter = 0;
+
+  // Set by os_main() at the end of the run: every worker leaves its loop at
+  // the next check, so the run can join them before exit() destroys the
+  // mutexes and semaphores they wait on (see stop_workers()).
+  volatile bool g_stop = false;
   mutex g_count_mutex{ "count" };
 
   // Console serialisation, using a RECURSIVE mutex so a holder may re-enter
@@ -139,9 +144,13 @@ namespace
   {
     auto* ctx = static_cast<worker_ctx*> (arg);
     int value = ctx->id * 1000;
-    for (;;)
+    while (!g_stop)
       {
         g_sem_free.wait ();                 // wait for a free slot
+        if (g_stop)
+          {
+            break;
+          }
 
         g_buffer_mutex.lock ();
         g_buffer.data[g_buffer.head] = value;
@@ -164,9 +173,13 @@ namespace
   consumer_func (void* arg)
   {
     auto* ctx = static_cast<worker_ctx*> (arg);
-    for (;;)
+    while (!g_stop)
       {
         g_sem_used.wait ();                 // wait for an item
+        if (g_stop)
+          {
+            break;
+          }
 
         g_buffer_mutex.lock ();
         (void) g_buffer.data[g_buffer.tail];
@@ -191,9 +204,13 @@ namespace
   consumer_dec_func (void* arg)
   {
     auto* ctx = static_cast<worker_ctx*> (arg);
-    for (;;)
+    while (!g_stop)
       {
         g_sem_used.wait ();                 // wait for an item
+        if (g_stop)
+          {
+            break;
+          }
 
         g_buffer_mutex.lock ();
         (void) g_buffer.data[g_buffer.tail];
@@ -216,7 +233,7 @@ namespace
   {
     auto* ctx = static_cast<worker_ctx*> (arg);
     bool state = false;
-    for (;;)
+    while (!g_stop)
       {
         state = !state;
         if (state)
@@ -307,6 +324,37 @@ os_main (int /*argc*/, char* /*argv*/[])
   // moved and end the run with the verdict (semihosting exit).
   constexpr unsigned kCheckMs = 5000;
   sysclock.sleep_for (kCheckMs);
+
+  // Stop the workers before the verdict ends the run. hw_result::ok() is
+  // std::exit(), which runs the static destructors -- the mutexes and
+  // semaphores above -- and a semaphore destroyed with a thread still on its
+  // waiting list trips assert (empty ()) in lists.cpp. Each worker leaves
+  // its loop at the next g_stop check; one post per possible waiter wakes
+  // any blocked in g_sem_free/g_sem_used.wait(). A post that fails with the
+  // count at its maximum loses nothing: then no thread can be waiting.
+  g_stop = true;
+  for (int i = 0; i < PRODUCERS; ++i)
+    {
+      g_sem_free.post ();
+    }
+  for (int i = 0; i < CONSUMERS + CONSUMERS_DEC; ++i)
+    {
+      g_sem_used.post ();
+    }
+  for (auto* th : producers)
+    {
+      th->join ();
+    }
+  for (auto* th : consumers)
+    {
+      th->join ();
+    }
+  for (auto* th : consumers_dec)
+    {
+      th->join ();
+    }
+  led_thread.join ();
+
   {
     const bool ok = (g_global_counter > 0);
     char rb[80];
