@@ -546,11 +546,18 @@ namespace os
               " mrs %[r], PSP                       \n"
               " isb                                 \n"
 
+#if defined(__ARM_FP)
+              // A thread that has used the FPU (EXC_RETURN bit 4 clear): the
+              // hardware stacked s0-s15 and the FPSCR; save s16-s31 too.
+              // Being an FP instruction, this also completes a pending lazy
+              // save into the frame, before the frame is published to the
+              // other core. restore_from_stack() mirrors it exactly.
+              " tst lr, #0x10                       \n"
+              " it eq                               \n"
+              " vstmdbeq %[r]!, {s16-s31}           \n"
+#endif
+
               // Save the core registers r4-r11,r14. Decrement [r].
-              // (No FPU save: the PiZero bootrom sets FPCA, so the conditional
-              // vstmdb {s16-s31} desyncs the frame layout against the restore
-              // -> INVSTATE PC=0. The FPU state survives in the registers, one
-              // FPU user per core.)
               " stmdb %[r]!, {r4-r9,sl,fp,lr}       \n"
 
               : [r] "=r"(sp_) /* out */
@@ -568,6 +575,13 @@ namespace os
 
               // Restore the core registers r4-r11,r14. Increment [r].
               " ldmia %[r]!, {r4-r9,sl,fp,lr}       \n"
+
+#if defined(__ARM_FP)
+              // The mirror of save_on_stack(), keyed on the restored lr.
+              " tst lr, #0x10                       \n"
+              " it eq                               \n"
+              " vldmiaeq %[r]!, {s16-s31}           \n"
+#endif
 
               // Restore the thread stack register.
               " msr PSP, %[r]                       \n"
@@ -650,11 +664,12 @@ extern "C"
 
     // Mirror the core-0 boot.S FPU bring-up on this core. boot.S only runs
     // on core 0; without this the first floating-point instruction on core 1
-    // faults NOCP (CPACR resets to 0 on RP2350) and, with ASPEN/LSPEN left at
-    // their reset defaults, the hardware FP frame desynchronises the port's
-    // conditional FP save/restore in save_on_stack()/restore_from_stack().
+    // faults NOCP (CPACR resets to 0 on RP2350). ASPEN/LSPEN on (the reset
+    // defaults): a thread that has used the FPU gets the extended exception
+    // frame, and save_on_stack() adds s16-s31, so its FPU registers follow it
+    // across switches and cores.
     rp2350::reg (rp2350::PPB_CPACR) = 0x00F00000u; // CP10/CP11 full access
-    rp2350::reg (0xE000EF34) &= ~0xC0000000u;      // FPCCR: clear ASPEN|LSPEN
+    rp2350::reg (0xE000EF34) |= 0xC0000000u;       // FPCCR: set ASPEN|LSPEN
     __set_CONTROL (__get_CONTROL () & ~CONTROL_FPCA_Msk);
     __DSB ();
     __ISB ();

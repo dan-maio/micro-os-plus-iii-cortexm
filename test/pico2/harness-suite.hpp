@@ -1,5 +1,5 @@
 // The verdict wrapper for the harness suites on the Pico 2 -- one copy for the
-// three (mutex-stress, rtos-apis, cmsis-os-validator), included by each
+// four (mutex-stress, rtos-apis, cmsis-os-validator, fp-switch), included by each
 // suite's test/pico2/<suite>/harness-suite.cpp.
 //
 // It gives each suite the verdict a board run needs. A suite RETURNS its

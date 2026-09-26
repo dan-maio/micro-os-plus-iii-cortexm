@@ -143,14 +143,14 @@ _reset_handler:
     dsb
     isb
 
-    /* Disable automatic + lazy FP state preservation on exception entry
-     * (FPCCR.ASPEN=bit31, LSPEN=bit30). With these on (the RP2350 reset
-     * default) the M33 sets FPCA and includes FP context in the exception
-     * frame, which desynchronises the port's conditional FP save/restore and
-     * corrupts the context switch. Off => FP is never in the frame. */
+    /* Automatic + lazy FP state preservation on exception entry
+     * (FPCCR.ASPEN=bit31, LSPEN=bit30) on: the reset default, set again in
+     * case the bootrom cleared them. A thread that has used the FPU gets the
+     * extended exception frame (s0-s15, FPSCR), and the port's PendSV saves
+     * s16-s31 beside it, so each thread keeps its own FPU registers. */
     ldr r0, =0xe000ef34           /* FPCCR */
     ldr r1, [r0]
-    bic r1, r1, #0xc0000000       /* clear ASPEN | LSPEN */
+    orr r1, r1, #0xc0000000       /* set ASPEN | LSPEN */
     str r1, [r0]
     /* Also clear CONTROL.FPCA so no FP context is considered active. */
     mrs r1, control

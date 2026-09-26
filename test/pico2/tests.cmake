@@ -169,7 +169,7 @@ endfunction ()
 # board_test_sources below, and the variant logic (hwd against the board, qemu
 # against the generic device) is the builder's, unchanged.
 # -----------------------------------------------------------------------------
-set (_harness_suites rtos-apis mutex-stress cmsis-os-validator)
+set (_harness_suites rtos-apis mutex-stress cmsis-os-validator fp-switch)
 
 # What a harness platform gives a suite and a board app does not, gathered in
 # one interface so each suite names it once:
@@ -217,6 +217,8 @@ function (board_test_libs _app _out)
          PARENT_SCOPE)
   elseif (_app STREQUAL "mutex-stress")
     set (${_out} test::mutex-stress pico2-harness-suite PARENT_SCOPE)
+  elseif (_app STREQUAL "fp-switch")
+    set (${_out} test::fp-switch pico2-harness-suite PARENT_SCOPE)
   elseif (_app STREQUAL "cmsis-os-validator")
     set (${_out} test::cmsis-os-validator xpacks::arm-cmsis-os-validator
          pico2-harness-suite PARENT_SCOPE)

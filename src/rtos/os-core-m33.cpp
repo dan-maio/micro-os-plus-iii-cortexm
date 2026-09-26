@@ -49,16 +49,19 @@
 #define SSE200_MHU_IRQ_CORE0 7 // MHU1 cpu0irq
 #define SSE200_MHU_IRQ_CORE1 6 // MHU0 cpu1irq
 
-// Disable automatic (and lazy) FPU state stacking. The port's exception frame
-// is a fixed 16-word basic frame; if the hardware adds the FP part to some
-// frames (ASPEN/LSPEN) the restore in PendSV desynchronises and returns to a
-// garbage PC (INVSTATE). The FPU registers then belong to the core, as in the
-// RP2350 reference port.
+// Enable automatic and lazy FPU state stacking (FPCCR.ASPEN, LSPEN: the reset
+// defaults, set again in case something cleared them). A thread that has used
+// the FPU then gets the extended exception frame (s0-s15, FPSCR) and
+// EXC_RETURN bit 4 clear, and PendSV saves s16-s31 on its stack as well
+// (save_on_stack/restore_from_stack). Without it, the FPU registers belong to
+// the core: two threads using them on one core, or one that moves to the
+// other core, see each other's values. CONTROL.FPCA is cleared: no FP context
+// is active yet at boot.
 static inline void
-m33_fpu_disable_stacking (void)
+m33_fpu_enable_stacking (void)
 {
 #if defined(__ARM_FP)
-  FPU->FPCCR &= ~(FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk);
+  FPU->FPCCR |= (FPU_FPCCR_ASPEN_Msk | FPU_FPCCR_LSPEN_Msk);
   __set_CONTROL (__get_CONTROL () & ~CONTROL_FPCA_Msk);
   __DSB ();
   __ISB ();
@@ -272,7 +275,7 @@ namespace os
           SCB->CPACR |= (0xF << 20); // CP10/CP11 full access
           __DSB ();
           __ISB ();
-          m33_fpu_disable_stacking ();
+          m33_fpu_enable_stacking ();
 #endif
 
           // Switch thread mode onto a PSP.
@@ -555,6 +558,15 @@ namespace os
           asm volatile (
               " mrs %[r], PSP                       \n"
               " isb                                 \n"
+#if defined(__ARM_FP)
+              // A thread that has used the FPU (EXC_RETURN bit 4 clear): the
+              // hardware stacked s0-s15 and the FPSCR; save s16-s31 too.
+              // Being an FP instruction, this also completes a pending lazy
+              // save into the frame, before the frame is published.
+              " tst lr, #0x10                       \n"
+              " it eq                               \n"
+              " vstmdbeq %[r]!, {s16-s31}           \n"
+#endif
               " stmdb %[r]!, {r4-r9,sl,fp,lr}       \n"
               : [r] "=r"(sp_) /* out */
               : /* in */
@@ -569,6 +581,12 @@ namespace os
         {
           asm volatile (
               " ldmia %[r]!, {r4-r9,sl,fp,lr}       \n"
+#if defined(__ARM_FP)
+              // The mirror of save_on_stack(), keyed on the restored lr.
+              " tst lr, #0x10                       \n"
+              " it eq                               \n"
+              " vldmiaeq %[r]!, {s16-s31}           \n"
+#endif
               " msr PSP, %[r]                       \n"
               " isb                                 \n"
               : /* out */
@@ -654,7 +672,7 @@ extern "C"
     SCB->CPACR |= (0xFu << 20); // CP10/CP11 full access
     __DSB ();
     __ISB ();
-    m33_fpu_disable_stacking ();
+    m33_fpu_enable_stacking ();
 
     unsigned cpu = port_cpu_id (); // 1
 
