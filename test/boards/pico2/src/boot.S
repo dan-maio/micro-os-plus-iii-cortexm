@@ -124,6 +124,16 @@ _reset_handler:
     msr msp, r1
     bx r2
 1:
+    /* Release all 32 SIO spinlocks (0xd0000100..0xd000017c; a write frees
+     * one). Their state survives a debugger reset or re-flash, so a run that
+     * ended while holding one -- spinlock 0 is the kernel lock -- would leave
+     * the next image spinning at its first critical section. */
+    ldr r0, =0xd0000100           /* SIO_SPINLOCK0 */
+    movs r1, #32
+7:  str r1, [r0], #4
+    subs r1, r1, #1
+    bne 7b
+
     /* VTOR -> our flash vector table */
     ldr r0, =__vector_table
     ldr r1, =0xe000ed08
