@@ -369,6 +369,14 @@ namespace os
           os_assert_throw (!interrupts::in_handler_mode (), EPERM);
 
 #if defined(OS_USE_SMP_SCHEDULER)
+          // Mask IRQs BEFORE reading the core id. With them enabled, a PendSV
+          // between port_cpu_id() and the lock_state[] write can move this
+          // thread to the other core, and it would then mark the core it left
+          // -- where another thread now runs -- as locked, and leave its own
+          // unmarked, so the matching unlock finds "unlocked" and never
+          // releases the kernel lock. Masked, the thread cannot move.
+          uint32_t pri = __get_PRIMASK ();
+          __asm__ volatile ("cpsid i" ::: "memory");
           unsigned cpu = port_cpu_id ();
           state_t tmp = lock_state[cpu];
 
@@ -376,10 +384,12 @@ namespace os
             {
               if (state == state::locked)
                 {
-                  // Mask IRQs and take the kernel spinlock, then publish
-                  // "locked". IRQs stay masked until lock_state is set, so no
-                  // handler can observe a locked core that is not yet locked.
-                  lock_primask[cpu] = port_set_lock ();
+                  // Take the kernel spinlock, then publish "locked". IRQs
+                  // stay masked until lock_state is set, so no handler can
+                  // observe a locked core that is not yet locked. The PRIMASK
+                  // to restore is the caller's, read before the cpsid above.
+                  (void)port_set_lock ();
+                  lock_primask[cpu] = pri;
                   lock_state[cpu] = state;
                 }
               else
@@ -394,6 +404,10 @@ namespace os
                   lock_state[cpu] = state;
                   port_put_lock (lock_primask[cpu]);
                 }
+            }
+          else
+            {
+              __set_PRIMASK (pri);
             }
           return tmp;
 #else

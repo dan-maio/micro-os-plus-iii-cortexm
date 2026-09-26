@@ -311,6 +311,22 @@ foreach (_dir IN LISTS _test_dirs)
       LIBRARIES ${_variant_libs}
       OUTPUT_NAME "${_app}-${_variant}"
     )
+
+    # The board's hw.sh loads `$BUILD/test/<app>-hwd`, with no extension,
+    # while the ELF the linker writes carries the toolchain's `.elf`. Leave a
+    # symlink under the name the runner looks for, as the AArch ports do; the
+    # `.elf` stays the real file. Only the hardware image.
+    if (_variant STREQUAL "hwd")
+      add_custom_command (
+        TARGET "${_app}-${_variant}"
+        POST_BUILD
+        COMMAND
+          "${CMAKE_COMMAND}" -E create_symlink
+          "$<TARGET_FILE:${_app}-${_variant}>"
+          "$<TARGET_FILE_DIR:${_app}-${_variant}>/${_app}-${_variant}"
+        VERBATIM
+      )
+    endif ()
   endforeach ()
 endforeach ()
 
