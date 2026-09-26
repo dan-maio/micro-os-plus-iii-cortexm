@@ -138,6 +138,10 @@ probe used for flashing and the UART does not carry the device.
 On the **pico2-pizero**, both tests passed on the board (cortexm `3dff821`:
 HID before the pin-at-construction change, CDC with it). On the **pico2**,
 both passed on the board on 2026-09-26 (CDC enumerated as `/dev/ttyACM1`
-beside the Debug Probe's own port). The CDC test drives only the MINI-A's
+beside the Debug Probe's own port). The pico2 HID test still pinned its USB
+thread **after** construction then, and a later run the same day failed to
+enumerate exactly as described under *The USB thread* (config descriptor
+-110, address -62). Since `1e97fbf` it pins at construction like the other
+three, and it passed again. The CDC test drives only the MINI-A's
 WS2812 on GPIO20, so on a plain Pico 2 (a single LED on GPIO25) nothing blinks;
 its `[cdc] led ON …` lines report what it sent to the WS2812.

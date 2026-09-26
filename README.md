@@ -72,6 +72,15 @@ Three pieces of RP2350 silicon make that work, and all three are the
 Core 1 is launched through the bootrom FIFO handshake with its own MSP. Only
 core 0 advances the RTOS clock; core 1's SysTick reschedules core 1 alone.
 
+The SIO spinlocks survive a debugger reset and a re-flash, so the board's
+`boot.S` releases all 32 on core 0 at reset: a previous run that ended holding
+spinlock 0 would otherwise hang the next image at its first critical section.
+
+Each thread keeps its own FPU registers, on either core: FPCCR.ASPEN and
+LSPEN are on (lazy stacking of s0–s15 and FPSCR on exception entry), and
+PendSV saves s16–s31 for a thread whose frame is extended. The suite
+`fp-switch` checks it.
+
 ## One CPU, and why that matters
 
 `src/rtos/os-core.cpp` is upstream's Cortex-M port, carried over unmodified.
