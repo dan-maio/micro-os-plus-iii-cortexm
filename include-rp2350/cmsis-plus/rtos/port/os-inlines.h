@@ -443,14 +443,51 @@ namespace os
       inline void __attribute__ ((always_inline))
       clock_highres::start (void)
       {
-        ;
+#if defined(OS_USE_SMP_SCHEDULER)
+        if (rp2350::reg (rp2350::RESETS_BASE + 0x00U) & (1U << 23U))
+          {
+            rp2350::reg (rp2350::RESETS_BASE + 0x00U) &= ~(1U << 23U);
+            while (!(rp2350::reg (rp2350::RESETS_BASE + 0x08U) & (1U << 23U)))
+              {
+              }
+          }
+        rp2350::reg (rp2350::TICKS_BASE + 0x1CU) = 12U;
+        rp2350::reg (rp2350::TICKS_BASE + 0x18U) = 1U;
+#endif
+      }
+
+      inline constexpr bool __attribute__ ((always_inline))
+      clock_highres::has_hardware_counter (void) noexcept
+      {
+#if defined(OS_USE_SMP_SCHEDULER)
+        return true;
+#else
+        return false;
+#endif
+      }
+
+      inline uint64_t __attribute__ ((always_inline))
+      clock_highres::hardware_counter (void) noexcept
+      {
+#if defined(OS_USE_SMP_SCHEDULER)
+        constexpr std::uint32_t timer0_base = 0x400B0000U;
+        uint32_t hi = rp2350::reg (timer0_base + 0x08U);
+        uint32_t lo = rp2350::reg (timer0_base + 0x0CU);
+        return (static_cast<uint64_t> (hi) << 32) | lo;
+#else
+        return 0;
+#endif
       }
 
       inline uint32_t __attribute__ ((always_inline))
       clock_highres::input_clock_frequency_hz (void)
       {
+#if defined(OS_USE_SMP_SCHEDULER)
+        return 1000000U;
+#else
         // The SysTick is clocked with the CPU clock.
         return SystemCoreClock;
+#endif
       }
 
 #pragma GCC diagnostic push
