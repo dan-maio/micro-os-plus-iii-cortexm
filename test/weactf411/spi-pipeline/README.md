@@ -1,9 +1,9 @@
 # `spi-pipeline` — five threads, eight semaphores, two partitions, one CRC
 
-The **C++** port of the application specified by
-[`docs/Rust/weact-spi.md`](../../../docs/Rust/weact-spi.md), running on the
-**WeAct Studio F411CE** under the shared **micro-os-plus-iii** kernel and the
-upstream **Cortex-M port**.
+The **C++** port of the application specified by `docs/Rust/weact-spi.md` in
+the predecessor tree (`luckfox_lyra_micro-os`), running on the **WeAct Studio
+F411CE** under the shared **micro-os-plus-iii** kernel and the upstream
+**Cortex-M port**.
 
 This is the C++ sibling of the Rust example of the same name
 (`micro-os-plus-iii-cortexm-weactf411-rust/examples/spi-pipeline`). The Rust
@@ -13,19 +13,19 @@ partitions — and the same verdicts. What differs is the kernel underneath:
 here every primitive is a **C++ µOS++ object** (`os::rtos::thread`,
 `semaphore_counting`, `mutex`, `mutex_recursive`, `sysclock`), the source of
 truth for the concurrency rules is the µOS++ kernel source itself, and the
-whole thing is a plain `make` + `arm-none-eabi` build rather than a Cargo
-one. This README is about *that*: what the port does, the µOS++ techniques it
+whole thing is an `arm-none-eabi` CMake build, made by the harness, rather
+than a Cargo one. This README is about *that*: what the port does, the µOS++ techniques it
 relies on, and the solutions this specific combination — a five-thread RTOS
 app driving SPI-NOR flash through a DMA/IRQ/polled driver — forced us to
 reach for.
 
 | | |
 |---|---|
-| The board it runs on | [`../README.md`](../README.md) |
-| The kernel | [`../../micro-os-plus-iii`](../../micro-os-plus-iii) (the `cortexm/` kernel copy, shared by the boards) |
-| The Cortex-M port | [`../../micro-os-plus-iii-cortexm`](../../micro-os-plus-iii-cortexm) |
-| The Rust original | [`../micro-os-plus-iii-cortexm-weactf411-rust/examples/spi-pipeline`](../../micro-os-plus-iii-cortexm-weactf411-rust/examples/spi-pipeline) |
-| The spec + its fixes | [`docs/Rust/weact-spi.md`](../../../docs/Rust/weact-spi.md) |
+| The board it runs on | `test/boards/weactf411/` in this repository (BSP, linker script, `openocd.cfg`, `hw.sh`) |
+| The kernel | `micro-os-plus-iii-smp.git` |
+| The Cortex-M port | this repository, `micro-os-plus-iii-cortexm.git` |
+| The Rust original | `micro-os-plus-iii-cortexm-weactf411-rust/examples/spi-pipeline`, in the predecessor tree |
+| The spec + its fixes | `docs/Rust/weact-spi.md`, in the predecessor tree (`luckfox_lyra_micro-os`) |
 
 ---
 
@@ -58,7 +58,8 @@ against the source. Eight times (`ITERATIONS`).
 `os_main` (the kernel's `main` thread) resets the pipeline state, spawns the
 five, waits for `g_verify_done`, `join()`s each, and checks the verdict
 record. Every check is **in-program** and printed as one of six `pipe N`
-lines; the last line is `spi-pipeline: PASS` or `FAIL, n`.
+lines, then `spi-pipeline: PASS` or `FAIL, n`, and last the harness's
+`RESULT: PASS` or `RESULT: FAIL`.
 
 ---
 
@@ -70,14 +71,20 @@ lines; the last line is `spi-pipeline: PASS` or `FAIL, n`.
 | `pipeline.hpp/.cpp` | sizes, the two hand-off slots, the eight semaphores, the verdict record, the console |
 | `base64.hpp/.cpp` | RFC 4648 §4 with **per-chunk** padding, and the §10 vectors it checks itself against at start-up |
 | `store.hpp/.cpp` | `Storage`: the two partitions + the writer, and the RAM backend QEMU takes |
-| `bsp/…/spi.*` | SPI1 in three transports — DMA2, SPI1 IRQ, polled — plus `probe()` |
-| `bsp/…/flash.*` | W25Q SPI NOR driver |
-| `bsp/…/flatfs.*` | the archive: `Partition`, `Writer`, CRC-32 (shared with the BSP) |
-| `Makefile` | shared kernel + port + device + BSP + app, built in place |
-| `run-qemu.sh` | boots under QEMU's `netduinoplus2`; **self-stops** on the verdict |
 | `check.sh` | asserts the transcript's gates on either machine |
-| `openocd.cfg`, `write_board.sh` | flash + run over a CMSIS-DAP probe |
-| `.vscode/` | Cortex-Debug/OpenOCD and probe-rs launch configs, tasks, settings |
+
+From the board, `test/boards/weactf411/`:
+
+| | |
+|---|---|
+| `src/spi.cpp`, `include/spi.hpp` | SPI1 in three transports — DMA2, SPI1 IRQ, polled — plus `probe()` |
+| `src/flash.cpp`, `include/flash.hpp` | W25Q SPI NOR driver |
+| `src/flatfs.cpp`, `include/flatfs.hpp` | the archive: `Partition`, `Writer`, CRC-32 (shared with the BSP) |
+| `src/os-hooks.c` | the clock boot |
+| `openocd.cfg`, `hw.sh` | the probe (a CMSIS-DAP DAPLink) and the port's own runner |
+
+The harness builds the application from this folder: the port's test builder
+makes one application per directory, and `tests.cmake` adds what it needs.
 
 ---
 
@@ -222,7 +229,7 @@ or silently allow a second, non-owning thread to barge into the device.
 
 ### 5. ISRs may only post; the three SPI handlers obey that rule
 
-The three device handlers live in the **BSP** (`bsp/src/spi.cpp`), not in the
+The three device handlers live in the **BSP** (`test/boards/weactf411/src/spi.cpp`), not in the
 example, because the vector table is a board property. In µOS++ a device IRQ
 handler is just a strong C-linkage function whose name matches a weak alias
 in the device vector table — there is no registry call. Each of the three
@@ -339,7 +346,7 @@ only silicon (or a partition-backed QEMU) could expose it.
 
 ## Two machines, one binary
 
-The clock boot in the board BSP (`bsp/src/os-hooks.c`) polls each PLL ready
+The clock boot in the board BSP (`test/boards/weactf411/src/os-hooks.c`) polls each PLL ready
 flag a bounded number of times. QEMU never asserts `HSERDY`, so the image
 stays on the reset HSI at 16 MHz there; on silicon the HSE 25 MHz → PLL →
 100 MHz switch lands and `SystemCoreClockUpdate()` records 100 MHz. The tick
@@ -351,30 +358,32 @@ RAM disk. The transcript says which one ran on its first lines.
 
 ### Under QEMU
 
-```sh
-make
-./run-qemu.sh                    # stops as soon as PASS/FAIL appears
-./check.sh /tmp/weact-spi-pipeline-qemu.log polled
-```
-
-The app prints `PASS` and then **parks forever** (the workers are done, so
-`os_main` sleeps), so `run-qemu.sh` runs QEMU in the background, polls the
-log for the verdict, and kills QEMU. It writes QEMU's output straight to the
-log with **no intermediate pipe**: the first version piped through `sed` to
-strip `\r`, and `sed`'s stdio buffering hid the tail of the log (including
-`PASS`) from the poll until the pipe closed, so the wrapper always timed out.
-Direct redirection fixed it. `check.sh` strips `\r` itself.
+The harness registers **no** QEMU case for this board: `boards/weactf411/board.cmake`
+sets no `UOS_BOARD_LINKER_QEMU`, so the board gets `hwd` cases only. The
+fall-backs above (the `polled` transport, the RAM store, the HSI clock) are
+still in the code; the QEMU column under *Measuring it* is the predecessor's
+measurement.
 
 ### On the board
 
+From `micro-os-plus-iii-smp.git/tests`, with the board on its DAPLink probe:
+
 ```sh
-make
-./write_board.sh                 # CMSIS-DAP probe; USART1 console at 115200
+xpm run test-spi-pipeline-hwd --config cortexm-weactf411-cmake-gcc-debug
 ```
 
-Expect `SPI transport dma`, `JEDEC 0xef …`, the partition layout, eight clean
-iterations and `PASS`. The CRC witness lines also go to semihosting (the
-`CRC0`/`CRC1`/`OK` triplet), which is why flashing turns semihosting on first.
+The transcript is on the board's **UART** (USART1, 115200 8N1); the harness's
+log (`build/<config>/.hw-logs/`) holds OpenOCD and the semihosting output:
+the CRC witness lines (the `CRC0`/`CRC1`/`OK` triplet), which is why the
+runner enables semihosting before `reset run`. Expect `SPI transport dma`,
+`JEDEC 0xef …`, the partition layout, eight clean iterations and
+`RESULT: PASS`. Capture the UART to a file and check it:
+
+```sh
+./check.sh uart.log dma
+```
+
+`check.sh` strips `\r` itself.
 
 ---
 
@@ -405,8 +414,8 @@ observer really ran).
 
 ## Measuring it
 
-Current build (on silicon the numbers depend on the image length, which is a
-property of the build):
+Measured on the predecessor's build (on silicon the numbers depend on the
+image length, which is a property of the build):
 
 | | QEMU (RAM store) | Board (SPI flash) |
 |---|---|---|

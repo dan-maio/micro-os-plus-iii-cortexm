@@ -7,8 +7,8 @@
 #
 # OpenOCD only. It programs the flash, enables semihosting and resets into the
 # image; there is no GDB anywhere in this path, and nothing is redirected --
-# the UART console is the board's own (115200 8N1, on the ST-Link's virtual
-# COM port), and the semihosting output appears in this terminal.
+# the UART console is the board's own (USART1, 115200 8N1, on whichever virtual
+# COM port bridges it), and the semihosting output appears in this terminal.
 #
 # Semihosting MUST be enabled before "reset run": os::trace::printf() issues
 # BKPT 0xAB, which faults if the debugger is not listening for it.

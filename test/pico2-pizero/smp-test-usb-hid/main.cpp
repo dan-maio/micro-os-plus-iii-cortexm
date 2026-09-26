@@ -19,8 +19,8 @@
  * console is GPIO0/1 as on the Pico 2, and the 16 MB linker script is the
  * board's.
  *
- * Host side: forward keys with the same tools as usb-hid-test
- * (host/kbd_forward.c or forward_kbd.py). Enumerates as Cafe:4012.
+ * Host side: forward keys with this test's host/kbd_forward
+ * (make; sudo ./kbd_forward). Enumerates as Cafe:4012.
  */
 
 #include <cmsis-plus/rtos/os.h>

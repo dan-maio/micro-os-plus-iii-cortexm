@@ -2,7 +2,7 @@
  * usb_hid.c — receive glue for the pico2 USB-HID device.
  *
  * The board enumerates as a generic in/out HID device. A host-side forwarder
- * (see host/forward_kbd.py) writes the keys you type into an HID OUT report;
+ * (the test's host/kbd_forward) writes the keys you type into an HID OUT report;
  * TinyUSB delivers them here via tud_hid_set_report_cb(), and we push the bytes
  * into a small lock-free-ish ring the application drains and prints on UART.
  *

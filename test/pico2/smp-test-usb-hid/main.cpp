@@ -14,8 +14,8 @@
  *   - a second µOS++ thread drains received keystrokes and prints them on UART;
  *   - the LED blinks as a heartbeat.
  *
- * Host side: forward keys with the same tools as usb-hid-test
- * (host/kbd_forward.c or forward_kbd.py). Enumerates as Cafe:4012.
+ * Host side: forward keys with this test's host/kbd_forward
+ * (make; sudo ./kbd_forward). Enumerates as Cafe:4012.
  */
 
 #include <cmsis-plus/rtos/os.h>
