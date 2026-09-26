@@ -20,6 +20,7 @@
 #include <bsp/multicore.hpp>
 #include <bsp/rp2350.hpp>
 #include <bsp/uart.hpp>
+#include <hw_result.hpp>
 #include <cmsis_device.h>
 
 #include <algorithm>
@@ -73,6 +74,11 @@ namespace
     unsigned local;
   };
   ctx worker_ctx[2];
+
+  // How many times each nesting interrupt ran, for the verdict.
+  volatile unsigned g_irq_uart = 0;
+  volatile unsigned g_irq_t2 = 0;
+  volatile unsigned g_irq_t3 = 0;
 
   // ---- TIMER0 Alarm definitions -------------------------------------------
   inline constexpr std::uint32_t TIMER0_BASE = 0x400B0000U;
@@ -950,6 +956,7 @@ extern "C"
     rp2350::reg (rp2350::UART0_BASE + 0x44) = 0x7FF;
     
     log_trace_at ("UART_Start", entry_time);
+    g_irq_uart = g_irq_uart + 1;
 
     // Busy-loop for 2.0 ms to ensure the 1.5 ms Timer2 interrupt preempts us.
     // At 150 MHz, this takes ~2 ms.
@@ -978,6 +985,7 @@ extern "C"
     alarm2_arm (1250000);
 
     log_trace_at ("T2_Alarm", entry_time);
+    g_irq_t2 = g_irq_t2 + 1;
   }
 
   /*
@@ -996,6 +1004,7 @@ extern "C"
     alarm3_arm (1249500);
 
     log_trace_at ("T3_Alarm", entry_time);
+    g_irq_t3 = g_irq_t3 + 1;
   }
 }
 
@@ -1250,6 +1259,41 @@ os_main (int /*argc*/, char* /*argv*/[])
     uart::write (m, static_cast<std::size_t> (n));
   }
 
+  // Bounded run: each worker does kIters beats (~kIters * 1 s), then the
+  // verdict -- both workers ran them all, and all three nesting interrupts
+  // (UART0, TIMER0 alarms 2 and 3) fired.
+  constexpr unsigned kIters = 20;
+  for (unsigned i = 0; i < 600u
+                       && (worker_ctx[0].local < kIters
+                           || worker_ctx[1].local < kIters);
+       ++i)
+    {
+      sysclock.sleep_for (100);
+    }
+
+  const bool ok = (worker_ctx[0].local >= kIters)
+                  && (worker_ctx[1].local >= kIters) && (g_irq_uart > 0)
+                  && (g_irq_t2 > 0) && (g_irq_t3 > 0);
+  char b[128];
+  int n = std::snprintf (
+      b, sizeof (b),
+      "\nRESULT: %s  (wrk0=%u wrk1=%u uart=%u t2=%u t3=%u)\n",
+      ok ? "PASS" : "FAIL", worker_ctx[0].local, worker_ctx[1].local,
+      g_irq_uart, g_irq_t2, g_irq_t3);
+  g_mutex.lock ();
+  uart::write (b, static_cast<std::size_t> (n));
+  g_mutex.unlock ();
+
+  // Ends through the strong _Exit() -> semihosting SYS_EXIT; hw_result also
+  // reports RESULT on the semihosting console the runner reads.
+  if (ok)
+    {
+      hw_result::ok ();
+    }
+  else
+    {
+      hw_result::fail ();
+    }
   for (;;)
     {
       sysclock.sleep_for (10000);
