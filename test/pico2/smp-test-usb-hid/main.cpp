@@ -153,15 +153,24 @@ os_main (int /*argc*/, char* /*argv*/[])
   multicore::launch_core1 (port_smp_secondary_start, port_core1_stack_top ());
   port_smp_core0_ipi_enable ();
 
+  // Every thread below is pinned AT CONSTRUCTION (th_cpu_affinity), not by a
+  // cpu_affinity() call after it: core 1 is already running, and it can pick
+  // a new thread off the ready list before a later pin lands. The USB thread
+  // must start on core 0, because tusb_init() enables USBCTRL_IRQ in the NVIC
+  // of the core it runs on (each RP2350 core has its own); started on core 1,
+  // the interrupt is serviced there while tud_task() runs on core 0, and the
+  // device never answers the host's setup requests.
+
   // USB device task — pinned to core 0.
   attr.th_stack_address = usb_stack;
   attr.th_stack_size_bytes = sizeof (usb_stack);
+  attr.th_cpu_affinity = (1u << 0);
   static thread usb_th{ "usb", usb_device_task, nullptr, attr };
-  usb_th.cpu_affinity (1u << 0);
 
-  // Consumer thread.
+  // Consumer thread -- any core.
   attr.th_stack_address = cons_stack;
   attr.th_stack_size_bytes = sizeof (cons_stack);
+  attr.th_cpu_affinity = 0xFFFFFFFFu;
   static thread cons_th{ "cons", consumer_task, nullptr, attr };
 
   uart::write ("core 0: USB HID device up; run host/kbd_forward and type.\n");
