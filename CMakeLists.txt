@@ -274,7 +274,7 @@ add_library (micro-os-plus::cortexm ALIAS micro-os-plus-iii-cortexm-interface)
 add_library (micro-os-plus::cortexm-bare
              ALIAS micro-os-plus-iii-cortexm-board-interface)
 
-# The GENERIC port, for the `qemu` image of a board QEMU does not model.
+# The GENERIC ports, for the `qemu` image of a board QEMU does not model.
 #
 # A board like the pico2 overrides the port core (os-core-rp2350.cpp) and the
 # include directory (include-rp2350/) with RP2350-specific ones. Its emulated
@@ -282,42 +282,57 @@ add_library (micro-os-plus::cortexm-bare
 # way the upstream Cortex-M port does, plus whatever device provides the
 # vector table (the harness's device-qemu-cortexm). The board's tests are
 # unchanged; only what runs under them differs.
-add_library (micro-os-plus-iii-cortexm-qemu-interface INTERFACE
-             EXCLUDE_FROM_ALL)
-target_include_directories (micro-os-plus-iii-cortexm-qemu-interface
-                            INTERFACE "include")
-target_sources (
-  micro-os-plus-iii-cortexm-qemu-interface
-  INTERFACE "src/rtos/os-core.cpp" src/semihosting-exit.cpp
-)
-target_link_libraries (micro-os-plus-iii-cortexm-qemu-interface
-                       INTERFACE micro-os-plus::iii)
-# The console is the semihosting channel; the kernel's trace-semihosting
-# backend only compiles when one of these is defined, otherwise the weak
-# no-op trace::write wins and nothing is printed.
-target_compile_definitions (
-  micro-os-plus-iii-cortexm-qemu-interface
-  INTERFACE OS_USE_TRACE_SEMIHOSTING_STDOUT
-)
-# The emulated image runs on QEMU's generic Cortex-M7 machine (mps2-an500),
-# which is what the harness's device-qemu-cortexm supports -- its CMSIS core
-# has no Cortex-M33. The board's own tests keep the board's flags; only the
-# qemu image is built for the generic machine.
-target_compile_options (
-  micro-os-plus-iii-cortexm-qemu-interface
-  INTERFACE -mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16
-)
-target_link_options (
-  micro-os-plus-iii-cortexm-qemu-interface
-  INTERFACE -mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16
-            --specs=nano.specs
-)
+#
+# There is one generic core per ISA the harness's device-qemu-cortexm can
+# model -- M0, M3, M4F and M7. They share the upstream single-core port core
+# (src/rtos/os-core.cpp) and the generic include/; they differ only in the
+# -mcpu flags. The matching device (its vectors, its CMSIS core and its linker
+# script) is chosen by the harness platform. They are single-core by
+# construction: the platform sets OS_NCPU=1 and never defines
+# OS_USE_SMP_SCHEDULER, so the kernel's SMP branches compile out.
+function (uos_add_generic_qemu_core suffix cpu_flags)
+  add_library (micro-os-plus-iii-cortexm-qemu-${suffix}-interface INTERFACE
+               EXCLUDE_FROM_ALL)
+  target_include_directories (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface INTERFACE "include")
+  target_sources (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface
+    INTERFACE "src/rtos/os-core.cpp" src/semihosting-exit.cpp
+              src/libc/getentropy.c)
+  target_link_libraries (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface
+    INTERFACE micro-os-plus::iii)
+  # The console is the semihosting channel; the kernel's trace-semihosting
+  # backend only compiles when one of these is defined, otherwise the weak
+  # no-op trace::write wins and nothing is printed.
+  target_compile_definitions (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface
+    INTERFACE OS_USE_TRACE_SEMIHOSTING_STDOUT)
+  target_compile_options (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface INTERFACE ${cpu_flags})
+  target_link_options (
+    micro-os-plus-iii-cortexm-qemu-${suffix}-interface
+    INTERFACE ${cpu_flags}
+              # The kernel's startup provides _start/main; do not also pull
+              # newlib's crt0.
+              -nostartfiles)
+  add_library (micro-os-plus::cortexm-qemu-${suffix}
+               ALIAS micro-os-plus-iii-cortexm-qemu-${suffix}-interface)
+  message (
+    VERBOSE
+    "> micro-os-plus::cortexm-qemu-${suffix} -> micro-os-plus-iii-cortexm-qemu-${suffix}-interface"
+  )
+endfunction ()
+
+uos_add_generic_qemu_core (m0 "-mcpu=cortex-m0;-mthumb;-mfloat-abi=soft")
+uos_add_generic_qemu_core (m3 "-mcpu=cortex-m3;-mthumb;-mfloat-abi=soft")
+uos_add_generic_qemu_core (m4f "-mcpu=cortex-m4;-mthumb;-mfloat-abi=hard;-mfpu=fpv4-sp-d16")
+uos_add_generic_qemu_core (m7 "-mcpu=cortex-m7;-mthumb;-mfloat-abi=hard;-mfpu=fpv5-d16")
+
+# Backward-compatible alias: before the per-ISA cores, the M7 core was the
+# only generic one and carried the unsuffixed name.
 add_library (micro-os-plus::cortexm-qemu
-             ALIAS micro-os-plus-iii-cortexm-qemu-interface)
-message (
-  VERBOSE
-  "> micro-os-plus::cortexm-qemu -> micro-os-plus-iii-cortexm-qemu-interface"
-)
+             ALIAS micro-os-plus-iii-cortexm-qemu-m7-interface)
 
 # The GENERIC Cortex-M33 port, for the emulated pico2 configurations.
 #
