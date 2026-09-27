@@ -65,6 +65,14 @@ SECTIONS {
         __data_start__ = .;
         *(.data*)
         *(.sdata*)
+        /* Executable code that must run from SRAM: the WS2812 bit-banging
+         * routine (glue/ws2812.cpp places it in .sram_text). Inside .data it
+         * is copied to RAM by boot.S and executed there, instead of being
+         * orphaned into flash XIP, where the straight-line NOP timing needs
+         * to be immune to fetch contention. */
+        . = ALIGN(4);
+        *(.sram_text)
+        *(.sram_text*)
         . = ALIGN(4);
         __data_end__ = .;
     } > RAM AT> FLASH
@@ -77,6 +85,16 @@ SECTIONS {
         *(.sbss*)
         . = ALIGN(4);
         __bss_end__ = .;
+    } > RAM
+
+    /* Fault record retained across a warm reset (glue/rtos-glue.cpp places it
+     * in .noinit). NOLOAD and outside __bss_start__..__bss_end__, so boot.S
+     * neither copies nor zeroes it, and its address is stable across a warm
+     * reset. */
+    .noinit (NOLOAD) : ALIGN(4) {
+        *(.noinit)
+        *(.noinit*)
+        . = ALIGN(4);
     } > RAM
 
     .heap (NOLOAD) : ALIGN(8) {

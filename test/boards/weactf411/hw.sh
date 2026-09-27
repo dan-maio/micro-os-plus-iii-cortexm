@@ -71,10 +71,13 @@ echo "== WeAct F411CE : $APP =="
 OCD_PID=$!
 
 waited=0 rc=2
-while kill -0 "$OCD_PID" 2>/dev/null; do
+while (( waited < SECS )); do
   if grep -q 'RESULT: PASS' "$LOG" 2>/dev/null; then rc=0; break; fi
   if grep -q 'RESULT: FAIL' "$LOG" 2>/dev/null; then rc=1; break; fi
-  if (( waited >= SECS )); then rc=2; break; fi
+  # OpenOCD exiting on its own (bad probe, empty target list) is not a
+  # timeout, and must not be reported as "TIMEOUT after 600s" for a run that
+  # lasted a second. Classify it as run-hw.sh does.
+  if ! kill -0 "$OCD_PID" 2>/dev/null; then rc=4; break; fi
   sleep 1; waited=$((waited + 1))
 done
 
@@ -83,7 +86,7 @@ kill "$OCD_PID" 2>/dev/null; wait "$OCD_PID" 2>/dev/null
 # OpenOCD's console is block-buffered when its stdout is a pipe, so a terse
 # test's verdict can reach the log only when OpenOCD exits. Look once more now
 # that it has, instead of reporting a timeout for a run that actually passed.
-if [[ $rc -eq 2 ]]; then
+if [[ $rc -eq 2 || $rc -eq 4 ]]; then
   if grep -q 'RESULT: PASS' "$LOG" 2>/dev/null; then
     rc=0
   elif grep -q 'RESULT: FAIL' "$LOG" 2>/dev/null; then
@@ -95,6 +98,7 @@ printf '\n%-24s ' "$APP"
 case "$rc" in
   0) echo "PASS  (${waited}s)" ;;
   1) echo "FAIL  (see $LOG)" ;;
+  4) echo "OPENOCD DIED  (see $LOG)" ;;
   *) echo "TIMEOUT after ${SECS}s  (see $LOG)" ;;
 esac
 [[ "$rc" -eq 0 ]]

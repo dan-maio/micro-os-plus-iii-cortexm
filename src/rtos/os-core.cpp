@@ -901,6 +901,18 @@ namespace os
 
           rtos::thread* new_thread = rtos::scheduler::current_thread_[cpu];
 
+          if (new_thread == nullptr)
+            {
+              // No ready thread and no idle thread -- fatal. Release the
+              // kernel lock first so the picker cannot be entered by anything
+              // else, then halt with interrupts masked (do not restore the
+              // saved mask: the scheduler is already torn).
+              _smp_klock_exit ();
+              __asm__ volatile ("cpsid if" ::: "memory");
+              for (;;)
+                __asm__ volatile ("wfi");
+            }
+
           // Prepare a local copy of the new thread SP, and mark its context
           // live on this CPU (the same thread, when it was re-picked).
           stack::element_t* out_sp = new_thread->context_.port_.stack_ptr;

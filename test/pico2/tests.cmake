@@ -50,7 +50,18 @@ set (BOARD_TEST_HWD_ONLY
      smp-test-usb-hid)
 
 function (board_test_ncpu _app _out)
-  if ("${_app}" IN_LIST _single_core)
+  # The harness suites are single-core here too. On the RP2350, launching core
+  # 1 is a board act the test performs (multicore::launch_core1), and the
+  # harness suites never do it: their mains are the kernel's portable
+  # tests/sources/<suite>/, and this board has no platform-support.cpp to
+  # install the secondary idle and release it (the AArch harness platforms
+  # have one). Building them at OS_NCPU=2 made them link the SMP kernel while
+  # CPU 1 never ran -- `os_idle_thread_core[1]` stayed nullptr and the
+  # fp-switch suite's whole cross-core claim was vacuous (migrated_rounds
+  # never incremented, and the verdict does not require it). Until the board
+  # supplies the launch, they run single-core, which is what they actually do.
+  # The qemu variant already forces NCPU=1 in test/CMakeLists.txt.
+  if ("${_app}" IN_LIST _single_core OR "${_app}" IN_LIST _harness_suites)
     set (${_out} 1 PARENT_SCOPE)
   else ()
     set (${_out} "${UOS_BOARD_NCPU}" PARENT_SCOPE)

@@ -40,7 +40,10 @@ namespace hw_result
   {
     register unsigned r0 __asm__ ("r0") = 0x04u; // SYS_WRITE0
     register const char* r1 __asm__ ("r1") = s;
-    __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
+    __asm__ volatile ("bkpt 0xAB"
+                      :
+                      : "r" (r0), "r" (r1)
+                      : "r2", "r3", "ip", "lr", "memory", "cc");
   }
 
   // End the run reporting SUCCESS.

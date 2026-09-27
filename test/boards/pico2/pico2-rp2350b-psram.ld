@@ -104,6 +104,17 @@ SECTIONS {
         __StackLimit = __StackTop - 0x8000;
     } > SRAM
 
+    /* Fault record retained across a warm reset (glue/rtos-glue.cpp places it
+     * in .noinit). Kept in internal SRAM rather than PSRAM: NOLOAD and above
+     * __StackTop, so boot.S neither copies nor zeroes it and the stack cannot
+     * reach it, and it survives a warm reset in which the PSRAM window is
+     * re-initialised. */
+    .noinit (NOLOAD) : ALIGN(4) {
+        *(.noinit)
+        *(.noinit*)
+        . = ALIGN(4);
+    } > SRAM
+
     .flash_end : ALIGN(4) {
         KEEP(*(.embedded_end_block))
     } > FLASH

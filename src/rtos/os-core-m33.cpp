@@ -481,7 +481,9 @@ namespace os
                   _smp_klock.owner = SMP_NO_OWNER;
                   _smp_klock_raw_release ();
                 }
-              __set_PRIMASK (pri);
+              // Stay masked: the scheduler state is already torn enough that
+              // an IRQ handler calling an RTOS API must not see it. `pri` is
+              // deliberately not restored here.
               __asm__ volatile ("cpsid if" ::: "memory");
               for (;;)
                 __asm__ volatile ("wfi");

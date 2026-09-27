@@ -37,6 +37,13 @@ SECTIONS {
         *(.reset)
         *(.after_vectors)
         *(.text*)
+        /* Executable code that must not be stalled by flash XIP fetch
+         * contention (glue/ws2812.cpp's .sram_text). The whole image is
+         * copied to RAM by the stub, so this is loaded with it. */
+        . = ALIGN(4);
+        *(.sram_text)
+        *(.sram_text*)
+        . = ALIGN(4);
         *(.rodata*)
         *(.srodata*)
         KEEP(*(.init))
@@ -80,6 +87,15 @@ SECTIONS {
         *(.sbss*)
         . = ALIGN(4);
         __bss_end__ = .;
+    } > RAM
+
+    /* Fault record retained across a warm reset (glue/rtos-glue.cpp places it
+     * in .noinit). NOLOAD and outside the stub's copy and the .bss zeroing, so
+     * it survives a warm reset. */
+    .noinit (NOLOAD) : ALIGN(4) {
+        *(.noinit)
+        *(.noinit*)
+        . = ALIGN(4);
     } > RAM
 
     .heap (NOLOAD) : ALIGN(8) {
