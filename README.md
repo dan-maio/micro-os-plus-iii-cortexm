@@ -11,22 +11,30 @@ way and from the same kernel.
 micro-os-plus-iii-cortexm/
 ├── CMakeLists.txt
 ├── include/cmsis-plus/rtos/port/    the port contract the kernel includes
-├── src/rtos/os-core.cpp             the ISA: PendSV, SysTick, critical sections
+├── include-m33/                     the generic Cortex-M33 port headers
+├── include-rp2350/                  the RP2350 SMP port headers
+├── src/rtos/os-core.cpp             upstream: PendSV, SysTick, critical sections
+├── src/rtos/os-core-m33.cpp         the generic M33 core (SSE-200 CPUID/MHU)
+├── src/rtos/os-core-rp2350.cpp      the RP2350 SMP core (SIO lock/FIFO/CPUID)
+├── src/semihosting-exit.cpp         strong _Exit() through SYS_EXIT
+├── src/libc/getentropy.c            getentropy() for libstdc++
 └── test/
     ├── CMakeLists.txt  hw.sh  qemu.sh
     ├── boards/<id>/                 board.cmake, include/, src/, linker.ld,
-    │                                openocd.cfg, hw.sh
+    │                                openocd.cfg, hw.sh (qemu.sh where modelled)
     └── <id>/                        that board's test applications
 ```
 
-Four boards, two Cortex-M profiles, one and two CPUs:
+Six boards, two Cortex-M profiles, one and two CPUs:
 
 | board | part | CPUs | applications |
 |---|---|---|---|
-| `nucleof411` | STM32F411RE, Cortex-M4F | 1 | `mos-test1` |
-| `weactf411` | STM32F411CE, Cortex-M4F | 1 | `mos-test1`, `spi-pipeline` |
-| `weactf412` | STM32F412RE, Cortex-M4F | 1 | `mos-test1`, `uart-test1` |
-| `pico2` | RP2350, 2× Cortex-M33 | **2** | `smp-test1`…`smp-test5`, `smp-mat-test` |
+| `nucleof411` | STM32F411RE, Cortex-M4F | 1 | `mos-test1`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
+| `weactf411` | STM32F411CE, Cortex-M4F | 1 | `mos-test1`, `spi-pipeline`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
+| `weactf412` | STM32F412RE, Cortex-M4F | 1 | `mos-test1`, `uart-test1`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
+| `pico2` | RP2350, 2× Cortex-M33 | **2** | `smp-test0`…`smp-test5`, `smp-mat-test`, `sc-test-ko`, `fp-switch`, `exc-test`, the USB tests, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
+| `pico2-pizero` | RP2350B, 2× Cortex-M33 | **2** | the `pico2` hardware set (no PSRAM) |
+| `pico2-rp2350b-psram` | RP2350B + 8 MB PSRAM, 2× Cortex-M33 | **2** | the `pico2` set plus the PSRAM tests |
 
 ## Building
 
@@ -34,24 +42,46 @@ Clone the two siblings beside this one, then:
 
 ```sh
 cmake -S . -B test/build -G Ninja -DBOARD=nucleof411 \
-      -DCMAKE_TOOLCHAIN_FILE=../micro-os-plus-iii-smp/cmake/toolchains/arm-none-eabi.cmake
+      -DCMAKE_TOOLCHAIN_FILE=../micro-os-plus-iii-smp.git/cmake/toolchains/arm-none-eabi.cmake
 cmake --build test/build -j
 ```
 
 ## Running
 
-Hardware only — all three boards are programmed over an ST-Link and run on
-the desk. OpenOCD does the whole job: program, enable semihosting, reset run.
-There is no GDB in this path and nothing is redirected.
+Hardware only for the three STM32 boards: they are programmed over an ST-Link
+and run on the desk. The three RP2350 boards are programmed over CMSIS-DAP.
+OpenOCD does the whole job: program, enable semihosting, reset run. There is
+no GDB in this path and nothing is redirected.
 
 ```sh
 BOARD=nucleof411 ./test/hw.sh          # list what is built
 BOARD=nucleof411 ./test/hw.sh mos-test1
 ```
 
-`test/qemu.sh` exists and answers honestly: none of these boards sets
-`UOS_BOARD_LINKER_QEMU`, so each builds one image per test rather than two,
-and the dispatcher points at `hw.sh`.
+`test/qemu.sh` is a dispatcher to `test/boards/<id>/qemu.sh`. Only `pico2`
+sets `UOS_BOARD_LINKER_QEMU`, so it builds an emulated image per test as well
+as the hardware one; the STM32 boards and `pico2-pizero` build hardware images
+only, and the dispatcher says so.
+
+## Generic QEMU cores
+
+Besides the board cores, the port exports generic single-core QEMU cores that
+the harness's emulated configurations link, in `tests/device-qemu-cortexm`
+(vector table, CMSIS core, linker script):
+
+| target | CPU | used by |
+|---|---|---|
+| `micro-os-plus::cortexm-qemu-m0` | Cortex-M0 (`-mfloat-abi=soft`) | `qemu-cortex-m0` |
+| `micro-os-plus::cortexm-qemu-m3` | Cortex-M3 (`-mfloat-abi=soft`) | `qemu-cortex-m3` |
+| `micro-os-plus::cortexm-qemu-m4f` | Cortex-M4F (`-mfpu=fpv4-sp-d16`) | `qemu-cortex-m4f` |
+| `micro-os-plus::cortexm-qemu-m7` | Cortex-M7F (`-mfpu=fpv5-d16`) | `qemu-cortex-m7f` |
+| `micro-os-plus::cortexm-qemu-m33` | Cortex-M33 (`-mfpu=fpv5-sp-d16`), 1 or 2 CPUs | `pico2-1cpu`, `2xcortex-m33` |
+
+`micro-os-plus::cortexm-qemu` is kept as an alias of the M7 core. Each core
+shares `src/rtos/os-core.cpp` (or `os-core-m33.cpp`), `src/semihosting-exit.cpp`
+and the generic `include/`, and differs only in the `-mcpu` flags. The harness
+platform sets `OS_NCPU` and, for the SMP M33 case, `OS_USE_SMP_SCHEDULER`; the
+`qemu-cortex-*` platforms run the SMP kernel single-core at `OS_NCPU=1`.
 
 ## SMP, and where it lives
 
