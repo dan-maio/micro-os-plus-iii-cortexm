@@ -460,7 +460,7 @@ namespace os
         // yet processed, so the total cycles count in steady_count_
         // does not yet reflect the correct value and needs to be
         // adjusted by one full cycle length.
-        if (SysTick->CTRL & SCB_ICSR_PENDSTSET_Msk)
+        if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0)
           {
             // Sample the decrementing counter again to validate the
             // initial sample.

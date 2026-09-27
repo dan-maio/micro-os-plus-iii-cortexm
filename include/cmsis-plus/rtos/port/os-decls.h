@@ -123,6 +123,7 @@ namespace os
         // (os-core-rp2350.cpp, whose include-rp2350/ has no os-decls.h of its
         // own). One lock state per CPU, as the SMP kernel indexes it.
         extern state_t lock_state[OS_NCPU];
+        extern uint32_t lock_primask[OS_NCPU];
 
         // The kernel lock, recursive. owner/depth record who holds it and how
         // deeply, the bookkeeping the SMP ports keep. What excludes the other

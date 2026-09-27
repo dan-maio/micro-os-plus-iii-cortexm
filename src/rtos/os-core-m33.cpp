@@ -450,6 +450,11 @@ namespace os
         switch_stacks (stack::element_t* sp)
         {
 #if defined(OS_USE_SMP_SCHEDULER)
+          // Mask local interrupts around context switch so higher-priority ISRs
+          // cannot preempt PendSV and mutate ready_threads_list_ concurrently.
+          uint32_t pri = __get_PRIMASK ();
+          __disable_irq ();
+
           unsigned cpu = port_cpu_id ();
 
           if (_smp_klock.owner != cpu)
@@ -470,6 +475,13 @@ namespace os
 
           if (new_thread == nullptr)
             {
+              _smp_klock.depth = _smp_klock.depth - 1;
+              if (_smp_klock.depth == 0)
+                {
+                  _smp_klock.owner = SMP_NO_OWNER;
+                  _smp_klock_raw_release ();
+                }
+              __set_PRIMASK (pri);
               __asm__ volatile ("cpsid if" ::: "memory");
               for (;;)
                 __asm__ volatile ("wfi");
@@ -503,6 +515,8 @@ namespace os
               _smp_klock.owner = SMP_NO_OWNER;
               _smp_klock_raw_release ();
             }
+
+          __set_PRIMASK (pri);
 
           return out_sp;
 #else

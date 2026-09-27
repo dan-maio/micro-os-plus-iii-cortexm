@@ -394,7 +394,7 @@ namespace os
         uint32_t load_value = SysTick->LOAD;
         uint32_t val = SysTick->VAL;
 
-        if (SysTick->CTRL & SCB_ICSR_PENDSTSET_Msk)
+        if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0)
           {
             uint32_t val_subsequent = SysTick->VAL;
             if (val > val_subsequent)

@@ -508,7 +508,7 @@ namespace os
 
         // Check overflow. If the exception is pending, the total cycles
         // count in steady_count_ does not yet reflect the correct value.
-        if (SysTick->CTRL & SCB_ICSR_PENDSTSET_Msk)
+        if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) != 0)
           {
             uint32_t val_subsequent = SysTick->VAL;
 

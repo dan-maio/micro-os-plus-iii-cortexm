@@ -191,6 +191,7 @@ namespace os
       {
 #if defined(OS_USE_SMP_SCHEDULER)
         state_t lock_state[OS_NCPU];
+        uint32_t lock_primask[OS_NCPU];
         smp_klock_t _smp_klock = { SMP_NO_OWNER, 0 };
 
         // Core 1's handler-mode (MSP) stack. Core 0 uses the linker main
@@ -340,16 +341,17 @@ namespace os
                 {
                   // Take the kernel spinlock; IRQs stay masked.
                   port_set_lock ();
+                  lock_primask[cpu] = pri;
                   lock_state[cpu] = state;
                 }
               else
                 {
                   // Publish "unlocked" BEFORE releasing the spinlock and
-                  // re-enabling IRQs, as the M33 port does: otherwise an IRQ
+                  // restoring PRIMASK, as the M33 port does: otherwise an IRQ
                   // in that window sees this core still locked, skips the
                   // PendSV, and the next thread here inherits the stale flag.
                   lock_state[cpu] = state;
-                  port_put_lock (0);
+                  port_put_lock (lock_primask[cpu]);
                 }
             }
           else
@@ -420,6 +422,11 @@ namespace os
         switch_stacks (stack::element_t* sp)
         {
 #if defined(OS_USE_SMP_SCHEDULER)
+          // Mask local interrupts around context switch so higher-priority ISRs
+          // cannot preempt PendSV and mutate ready_threads_list_ concurrently.
+          uint32_t pri = __get_PRIMASK ();
+          __disable_irq ();
+
           unsigned cpu = port_cpu_id ();
 
           // Enter the kernel spinlock (recursive).
@@ -429,7 +436,6 @@ namespace os
               _smp_klock.owner = cpu;
             }
           _smp_klock.depth = _smp_klock.depth + 1;
-
 
           // Clear the PendSV bit (late-arrival/preemption safety).
           SCB->ICSR = SCB_ICSR_PENDSVCLR_Msk;
@@ -448,6 +454,14 @@ namespace os
           if (new_thread == nullptr)
             {
               // No ready thread and no idle thread on this core — fatal.
+              // Release the kernel spinlock before halting so other cores do not deadlock.
+              _smp_klock.depth = _smp_klock.depth - 1;
+              if (_smp_klock.depth == 0)
+                {
+                  _smp_klock.owner = SMP_NO_OWNER;
+                  _smp_klock_raw_release ();
+                }
+              __set_PRIMASK (pri);
               __asm__ volatile ("cpsid if" ::: "memory");
               for (;;)
                 __asm__ volatile ("wfi");
@@ -486,6 +500,8 @@ namespace os
               _smp_klock.owner = SMP_NO_OWNER;
               _smp_klock_raw_release ();
             }
+
+          __set_PRIMASK (pri);
 
           return out_sp;
 #else
