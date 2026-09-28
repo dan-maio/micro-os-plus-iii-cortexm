@@ -32,7 +32,7 @@ Six boards, two Cortex-M profiles, one and two CPUs:
 | `nucleof411` | STM32F411RE, Cortex-M4F | 1 | `mos-test1`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
 | `weactf411` | STM32F411CE, Cortex-M4F | 1 | `mos-test1`, `spi-pipeline`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
 | `weactf412` | STM32F412RE, Cortex-M4F | 1 | `mos-test1`, `uart-test1`, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
-| `pico2` | RP2350, 2× Cortex-M33 | **2** | `smp-test0`…`smp-test5`, `smp-mat-test`, `sc-test-ko`, `fp-switch`, `exc-test`, the USB tests, `cmsis-os-validator`, `mutex-stress`, `rtos-apis` |
+| `pico2` | RP2350, 2× Cortex-M33 | **2** | `smp-test0`…`smp-test5`, `smp-mat-test`, `sc-test-ko`, `fp-switch`, `exc-test`, the USB tests, `cmsis-os-validator`, `mutex-stress`, `rtos-apis`, `cmsis-os-validator-ram`, `mutex-stress-ram`, `rtos-apis-ram` |
 | `pico2-pizero` | RP2350B, 2× Cortex-M33 | **2** | the `pico2` hardware set (no PSRAM) |
 | `pico2-rp2350b-psram` | RP2350B + 8 MB PSRAM, 2× Cortex-M33 | **2** | the `pico2` set plus the PSRAM tests |
 
@@ -62,6 +62,24 @@ BOARD=nucleof411 ./test/hw.sh mos-test1
 sets `UOS_BOARD_LINKER_QEMU`, so it builds an emulated image per test as well
 as the hardware one; the STM32 boards and `pico2-pizero` build hardware images
 only, and the dispatcher says so.
+
+## Pure RAM Execution on Pico 2 (RP2350)
+
+Three tests run **entirely from internal SRAM** (`0x20000000`, 520 KB) without writing anything to external QSPI flash:
+- `cmsis-os-validator-ram`
+- `mutex-stress-ram`
+- `rtos-apis-ram`
+
+Each test directory (`test/pico2/<app>/`) contains:
+- `linker-ram.ld`: Links `.text`, `.rodata`, `.data` in SRAM `0x20000000`. Sections `.bss`, `.heap`, `.stack` are marked `(NOLOAD)` and `.embedded_end_block` is embedded compactly in `.text` so the downloaded ELF size remains compact (~26–68 KB).
+- `hw.sh`: Dedicated hardware test runner that:
+  1. Relocates OpenOCD's target work-area to `0x20070000` (`rp2350.cm0 configure -work-area-phys 0x20070000 -work-area-size 0x8000`) so fast CRC verification never overlaps with application memory.
+  2. Downloads the ELF into SRAM `0x20000000` via `load_image` and validates via `verify_image`.
+  3. Resumes Core 1 (`rp2350.cm1`) to wait in bootrom.
+  4. Configures Core 0 (`rp2350.cm0`) VTOR (`0xE000ED08`) to `0x20000000`, sets SP from `[0x20000000]` and PC from `[0x20000004] & ~1` (`_reset_handler`), enables semihosting, and resumes.
+  5. Monitors semihosting output for `RESULT: PASS` and exits cleanly.
+- `load-ram.cfg`: Standalone OpenOCD script for manual and interactive debug sessions.
+- `README.md` and `README.pdf`: Self-contained test documentation and architecture notes.
 
 ## Generic QEMU cores
 

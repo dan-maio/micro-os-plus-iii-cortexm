@@ -78,6 +78,11 @@ rm -f "$LOG"
 
 echo "== Raspberry Pi Pico 2 (RP2350, 2x Cortex-M33 SMP) : $APP =="
 
+# If this test provides its own hardware runner (e.g. RAM-resident tests), delegate to it:
+if [[ -x "$ROOT/test/pico2/${APP}/hw.sh" ]]; then
+  exec "$ROOT/test/pico2/${APP}/hw.sh" "$BUILD" "$APP" "$SECS"
+fi
+
 # Run OpenOCD in the background so it stays attached after the resume: the
 # test's semihosting SYS_EXIT has to reach a live debugger, and this script
 # reads the verdict from the log as it appears.

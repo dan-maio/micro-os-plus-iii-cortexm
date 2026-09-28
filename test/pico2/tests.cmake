@@ -38,6 +38,9 @@ set (BOARD_TEST_NO_KERNEL smp-test0 exc-test)
 # exc-test, smp-test1 and sc-test-ko, the single-core bring-up and the
 # kernel-object test -- builds and runs emulated.
 set (BOARD_TEST_HWD_ONLY
+     cmsis-os-validator-ram
+     rtos-apis-ram
+     mutex-stress-ram
      exc-test
      smp-mat-test
      smp-test0
@@ -180,7 +183,7 @@ endfunction ()
 # board_test_sources below, and the variant logic (hwd against the board, qemu
 # against the generic device) is the builder's, unchanged.
 # -----------------------------------------------------------------------------
-set (_harness_suites rtos-apis mutex-stress cmsis-os-validator fp-switch)
+set (_harness_suites rtos-apis rtos-apis-ram mutex-stress mutex-stress-ram cmsis-os-validator cmsis-os-validator-ram fp-switch)
 
 # What a harness platform gives a suite and a board app does not, gathered in
 # one interface so each suite names it once:
@@ -223,16 +226,28 @@ if (NOT TARGET pico2-harness-suite)
 endif ()
 
 function (board_test_libs _app _out)
-  if (_app STREQUAL "rtos-apis")
+  if (_app STREQUAL "rtos-apis" OR _app STREQUAL "rtos-apis-ram")
     set (${_out} test::rtos-apis xpacks::chan-fatfs pico2-harness-suite
          PARENT_SCOPE)
-  elseif (_app STREQUAL "mutex-stress")
+  elseif (_app STREQUAL "mutex-stress" OR _app STREQUAL "mutex-stress-ram")
     set (${_out} test::mutex-stress pico2-harness-suite PARENT_SCOPE)
   elseif (_app STREQUAL "fp-switch")
     set (${_out} test::fp-switch pico2-harness-suite PARENT_SCOPE)
-  elseif (_app STREQUAL "cmsis-os-validator")
+  elseif (_app STREQUAL "cmsis-os-validator" OR _app STREQUAL "cmsis-os-validator-ram")
     set (${_out} test::cmsis-os-validator xpacks::arm-cmsis-os-validator
          pico2-harness-suite PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
+function (board_test_linker _app _out)
+  if (_app STREQUAL "cmsis-os-validator-ram")
+    set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/cmsis-os-validator-ram/linker-ram.ld" PARENT_SCOPE)
+  elseif (_app STREQUAL "rtos-apis-ram")
+    set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/rtos-apis-ram/linker-ram.ld" PARENT_SCOPE)
+  elseif (_app STREQUAL "mutex-stress-ram")
+    set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/mutex-stress-ram/linker-ram.ld" PARENT_SCOPE)
   else ()
     set (${_out} "" PARENT_SCOPE)
   endif ()
