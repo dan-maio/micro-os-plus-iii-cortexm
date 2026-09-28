@@ -12,6 +12,9 @@ APP="${2:-rtos-apis-ram}"
 SECS="${3:-600}"
 
 ELF="$BUILD/test/${APP}-hwd"
+if [[ ! -f "$ELF" && -f "$BUILD/test/${APP}-hwd.elf" ]]; then
+  ELF="$BUILD/test/${APP}-hwd.elf"
+fi
 if [[ ! -f "$ELF" ]]; then
   echo "hw.sh: no such test: $APP" >&2
   exit 2
