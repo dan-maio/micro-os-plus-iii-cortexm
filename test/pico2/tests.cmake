@@ -41,6 +41,7 @@ set (BOARD_TEST_HWD_ONLY
      cmsis-os-validator-ram
      rtos-apis-ram
      mutex-stress-ram
+     smp-mat-test-ram
      exc-test
      smp-mat-test
      smp-test0
@@ -248,6 +249,8 @@ function (board_test_linker _app _out)
     set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/rtos-apis-ram/linker-ram.ld" PARENT_SCOPE)
   elseif (_app STREQUAL "mutex-stress-ram")
     set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/mutex-stress-ram/linker-ram.ld" PARENT_SCOPE)
+  elseif (_app STREQUAL "smp-mat-test-ram")
+    set (${_out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/smp-mat-test-ram/linker-ram.ld" PARENT_SCOPE)
   else ()
     set (${_out} "" PARENT_SCOPE)
   endif ()
