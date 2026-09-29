@@ -31,6 +31,8 @@ namespace
   void
   semi_write0 (const char* s)
   {
+    if (!uos_debug_host_attached ()) // OpenOCD gone: see debug-host.h
+      return;
     register unsigned r0 __asm__ ("r0") = 0x04u;  // SYS_WRITE0
     register const char* r1 __asm__ ("r1") = s;
     __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
@@ -39,6 +41,9 @@ namespace
   [[noreturn]] void
   semi_exit (unsigned reason)
   {
+    while (!uos_debug_host_attached ()) // OpenOCD gone: see debug-host.h
+      {
+      }
     register unsigned r0 __asm__ ("r0") = 0x18u;  // SYS_EXIT
     register unsigned r1 __asm__ ("r1") = reason;
     __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");

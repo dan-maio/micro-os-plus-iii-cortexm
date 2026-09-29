@@ -37,6 +37,18 @@ extern "C" void _Exit (int code) __attribute__ ((noreturn));
 extern "C" void
 _Exit (int code)
 {
+#if defined(HW_BUILD)
+  // On hardware the BKPT is serviced only while OpenOCD is attached, which
+  // DHCSR.C_DEBUGEN says. A test that reset the chip (the RP2350 clock tests)
+  // has lost it: the BKPT would be a HardFault (HFSR.DEBUGEVT) right after
+  // its UART "RESULT:" line. Park instead, and exit should OpenOCD re-attach.
+  // The same check as the tests' debug-host.h, which this file cannot
+  // include: it is built outside the test tree too. QEMU images (no
+  // HW_BUILD) are unaffected -- the emulator services semihosting itself.
+  while ((*reinterpret_cast<volatile unsigned*> (0xE000EDF0u) & 1u) == 0u)
+    {
+    }
+#endif
   report_exception (code == 0 ? ADP_Stopped_ApplicationExit
                               : ADP_Stopped_RunTimeError);
 }

@@ -29,6 +29,8 @@
 
 #include <cstdlib>
 
+#include <debug-host.h>
+
 namespace hw_result
 {
   // The board's console is the UART, but the runner (hw.sh) greps OpenOCD's
@@ -38,6 +40,8 @@ namespace hw_result
   inline void __attribute__ ((always_inline))
   semi_write0 (const char* s)
   {
+    if (!uos_debug_host_attached ()) // OpenOCD gone: see debug-host.h
+      return;
     register unsigned r0 __asm__ ("r0") = 0x04u; // SYS_WRITE0
     register const char* r1 __asm__ ("r1") = s;
     __asm__ volatile ("bkpt 0xAB"

@@ -34,6 +34,9 @@ namespace
   [[noreturn]] void
   semi_exit (unsigned reason)
   {
+    while (!uos_debug_host_attached ()) // OpenOCD gone: see debug-host.h
+      {
+      }
     register unsigned r0 __asm__ ("r0") = 0x18u; // SYS_EXIT
     register unsigned r1 __asm__ ("r1") = reason;
     __asm__ volatile ("bkpt 0xAB" : : "r" (r0), "r" (r1) : "memory");
