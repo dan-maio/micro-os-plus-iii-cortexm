@@ -51,7 +51,7 @@ namespace hw_result
   ok () noexcept
   {
     semi_write0 ("RESULT: PASS\n");
-    std::exit (0);
+    std::_Exit (0);
   }
 
   // End the run reporting FAILURE.
@@ -59,6 +59,6 @@ namespace hw_result
   fail () noexcept
   {
     semi_write0 ("RESULT: FAIL\n");
-    std::exit (1);
+    std::_Exit (1);
   }
 } // namespace hw_result
