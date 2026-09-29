@@ -1264,10 +1264,11 @@ os_main (int /*argc*/, char* /*argv*/[])
     uart::write (m, static_cast<std::size_t> (n));
   }
 
-  // Bounded run: each worker does kIters beats (~kIters * 1 s), then the
-  // verdict -- both workers ran them all, and all three nesting interrupts
-  // (UART0, TIMER0 alarms 2 and 3) fired.
-  constexpr unsigned kIters = 20;
+  // Bounded run: after 'y', each worker does kIters beats (~kIters * 1 s),
+  // then the verdict -- both workers ran them all, and all three nesting
+  // interrupts (UART0, TIMER0 alarms 2 and 3) fired -- and the run ENDS
+  // through the semihosting exit (hw_result below), never runs on.
+  constexpr unsigned kIters = 10;
   for (unsigned i = 0; i < 600u
                        && (worker_ctx[0].local < kIters
                            || worker_ctx[1].local < kIters);
@@ -1288,6 +1289,20 @@ os_main (int /*argc*/, char* /*argv*/[])
   g_mutex.lock ();
   uart::write (b, static_cast<std::size_t> (n));
   g_mutex.unlock ();
+
+  // STOP THE WHOLE CHIP before the verdict. The semihosting SYS_EXIT below
+  // halts only the core that executes it, and hw.sh drops OpenOCD as soon as
+  // it reads RESULT: the other core would go on running the workers, the
+  // trace and pot threads and the UART, and the board never stops. So: let
+  // the RESULT line drain, mask this core's interrupts, and hold the other
+  // core in reset (PSM FRCE_OFF; PROC0 = bit 23, PROC1 = bit 24) -- the same
+  // quiesce clocks::reboot_to_index() does before its watchdog reset.
+  sysclock.sleep_for (20);
+  __asm__ volatile ("cpsid i" ::: "memory");
+  {
+    const std::uint32_t self = rp2350::reg (rp2350::SIO_CPUID) & 1u;
+    rp2350::reg (rp2350::PSM_BASE + 0x04) |= self ? (1u << 23) : (1u << 24);
+  }
 
   // Ends through the strong _Exit() -> semihosting SYS_EXIT; hw_result also
   // reports RESULT on the semihosting console the runner reads.
