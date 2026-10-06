@@ -62,11 +62,39 @@ static_assert (OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY
 
 #endif /* defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__) */
 
+// The kernel's SMP scheduler on ONE CPU. This core has no second core to
+// start, no cross-core lock word and no IPI: the SMP branch below exists so
+// the kernel's SMP code paths (per-CPU current thread and lock state, the
+// affinity-aware picker, the stack_ptr liveness rule) run on a single Cortex-M.
+// More CPUs need a board that supplies a lock and an IPI (see CMakeLists.txt).
+#if defined(OS_USE_SMP_SCHEDULER)
+static_assert (OS_NCPU == 1,
+               "the upstream Cortex-M core runs the SMP scheduler on 1 CPU "
+               "only");
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
+
 // ----------------------------------------------------------------------------
 
 #if defined(__ARM_ARCH_6M__)
 extern uint32_t __vectors_start;
 #endif
+
+#if defined(OS_USE_SMP_SCHEDULER)
+// The kernel's idle thread, registered as CPU 0's idle in start().
+extern os::rtos::thread* os_idle_thread;
+
+namespace os
+{
+  namespace rtos
+  {
+    namespace scheduler
+    {
+      // The kernel's per-CPU idle threads (kernel os-core.cpp).
+      extern thread* os_idle_thread_core[OS_NCPU];
+    } /* namespace scheduler */
+  } /* namespace rtos */
+} /* namespace os */
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
 // ----------------------------------------------------------------------------
 
@@ -358,7 +386,12 @@ namespace os
 
       namespace scheduler
       {
+#if defined(OS_USE_SMP_SCHEDULER)
+        state_t lock_state[OS_NCPU];
+        smp_klock_t _smp_klock = { SMP_NO_OWNER, 0 };
+#else
         state_t lock_state;
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
         result_t
         initialize (void)
@@ -494,7 +527,15 @@ namespace os
           rtos::thread* pth = reinterpret_cast<rtos::thread*> (&fake_thread);
 
           // Make the fake thread look like the current thread.
+#if defined(OS_USE_SMP_SCHEDULER)
+          rtos::scheduler::current_thread_[0] = pth;
+
+          // The picker falls back to the CPU's idle thread; CPU 0's is the
+          // kernel's.
+          rtos::scheduler::os_idle_thread_core[0] = ::os_idle_thread;
+#else
           rtos::scheduler::current_thread_ = pth;
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
           // Trigger the PendSV; the exception will happen a bit later,
           // after re-enabling the interrupts.
@@ -507,7 +548,11 @@ namespace os
 
 #endif
 
+#if defined(OS_USE_SMP_SCHEDULER)
+          lock_state[0] = state::init;
+#else
           lock_state = state::init;
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
           // Enable all interrupts; allow PendSV to occur.
           __enable_irq ();
@@ -531,8 +576,17 @@ namespace os
           {
             rtos::interrupts::critical_section ics;
 
+#if defined(OS_USE_SMP_SCHEDULER)
+            // With one CPU the scheduler lock stays what it is upstream: a
+            // flag the picker reads. It holds no interrupt mask; no other
+            // core can run the picker meanwhile.
+            unsigned cpu = port_cpu_id ();
+            tmp = lock_state[cpu];
+            lock_state[cpu] = state;
+#else
             tmp = lock_state;
             lock_state = state;
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
           }
 
           return tmp;
@@ -830,6 +884,44 @@ namespace os
           SCB->ICSR = SCB_ICSR_PENDSVCLR_Msk;
 #pragma GCC diagnostic pop
 
+#if defined(OS_USE_SMP_SCHEDULER)
+
+          // Interrupts are masked: take the kernel lock for the picker.
+          _smp_klock_enter ();
+
+          unsigned cpu = port_cpu_id ();
+          rtos::thread* old_thread = rtos::scheduler::current_thread_[cpu];
+
+          // Save the current SP in the initial context. This also publishes
+          // the outgoing thread as switchable again: the SMP picker skips a
+          // thread whose stack_ptr is null (its context is live on a CPU).
+          old_thread->context_.port_.stack_ptr = sp;
+
+          rtos::scheduler::internal_switch_threads ();
+
+          rtos::thread* new_thread = rtos::scheduler::current_thread_[cpu];
+
+          if (new_thread == nullptr)
+            {
+              // No ready thread and no idle thread -- fatal. Release the
+              // kernel lock first so the picker cannot be entered by anything
+              // else, then halt with interrupts masked (do not restore the
+              // saved mask: the scheduler is already torn).
+              _smp_klock_exit ();
+              __asm__ volatile ("cpsid if" ::: "memory");
+              for (;;)
+                __asm__ volatile ("wfi");
+            }
+
+          // Prepare a local copy of the new thread SP, and mark its context
+          // live on this CPU (the same thread, when it was re-picked).
+          stack::element_t* out_sp = new_thread->context_.port_.stack_ptr;
+          new_thread->context_.port_.stack_ptr = nullptr;
+
+          _smp_klock_exit ();
+
+#else
+
           rtos::thread* old_thread = rtos::scheduler::current_thread_;
 
           // Save the current SP in the initial context.
@@ -850,6 +942,8 @@ namespace os
           // Prepare a local copy of the new thread SP.
           stack::element_t* out_sp
               = rtos::scheduler::current_thread_->context_.port_.stack_ptr;
+
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
 #if defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__)
 
@@ -883,6 +977,17 @@ namespace os
     } /* namespace port */
   } /* namespace rtos */
 } /* namespace os */
+
+// ----------------------------------------------------------------------------
+
+#if defined(OS_USE_SMP_SCHEDULER)
+// The kernel's CPU index (declared extern "C" by the kernel).
+extern "C" unsigned
+port_cpu_id (void)
+{
+  return os::rtos::port::scheduler::port_cpu_id ();
+}
+#endif /* defined(OS_USE_SMP_SCHEDULER) */
 
 // ----------------------------------------------------------------------------
 
