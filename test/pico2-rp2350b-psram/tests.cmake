@@ -1,0 +1,217 @@
+# -----------------------------------------------------------------------------
+# What this board's tests need.
+#
+# Fourteen tests, and three of the board's source sets are per-test. All of it is
+# a transcription of the predecessor's rp2350B and rp2350B_psram Makefiles:
+#
+#   every test        uart.cpp and the RTOS glue
+#   smp-test5         the glue only -- it defines its own uart:: in main.cpp
+#   the SMP tests     multicore.cpp, the bootrom core-1 launch
+#   smp-test1         single-core bring-up: no multicore.cpp, OS_NCPU=1
+#   sc-test-ko        single-core kernel-object test: likewise
+#   the PSRAM set     psram.cpp, PICO2_PSRAM=1, PICO2_PSRAM_CS_PIN=0, and a
+#                     DIFFERENT LINKER SCRIPT -- .data/.bss/heap move to the
+#                     external PSRAM at 0x11000000 and internal SRAM keeps only
+#                     the PSRAM init routine and the main stack
+#   the nested-clock  adc.cpp, plus the clock knobs each of the three was built
+#   set               with: _200 runs the from-scratch clock tree at its
+#                     default, the other two enable 250 MHz
+#
+# smp-test-nested is the only test here that is NOT also on the other two
+# boards: it exists in the predecessor for rp2350B alone.
+# -----------------------------------------------------------------------------
+
+set (_single_core smp-test1 sc-test-ko)
+
+# The two applications that compile NO KERNEL. They are the bare-metal probes
+# that run before a scheduler exists: smp-test0 starts the second core itself
+# and checks the two can talk, exc-test asks whether exception ENTRY works at
+# all. Their Makefiles list no kernel source and no port core -- nine files
+# and seven files respectively -- so they link the port's bare target.
+set (BOARD_TEST_NO_KERNEL smp-test0 exc-test)
+
+# The four applications the predecessor built against the PSRAM.
+set (_psram_tests smp-mat-test
+                  smp-test-nested-clock
+                  smp-test-nested-clock_200
+                  smp-test-nested-clock_250)
+
+# The three that drive the clock tree themselves and read the on-die
+# temperature sensor through the ADC.
+set (_clock_tests smp-test-nested-clock
+                  smp-test-nested-clock_200
+                  smp-test-nested-clock_250)
+
+# The one harness suite, fp-switch, runs single-core for the reason the Pico 2's
+# suites do (test/pico2/tests.cmake, board_test_ncpu): it never launches core 1,
+# so at OS_NCPU=2 it would link the SMP kernel with CPU 1 never running.
+set (_harness_suites fp-switch)
+
+function (board_test_ncpu _app _out)
+  if ("${_app}" IN_LIST _single_core OR "${_app}" IN_LIST _harness_suites)
+    set (${_out} 1 PARENT_SCOPE)
+  else ()
+    set (${_out} "${UOS_BOARD_NCPU}" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
+function (board_test_sources _app _out)
+
+  # The kernel-less pair take the board's start-up and nothing that needs a
+  # scheduler: no rtos-glue.cpp, no trace, no syscalls. smp-test0 drives both
+  # cores itself, so it does take multicore.cpp; exc-test does not.
+  if ("${_app}" IN_LIST BOARD_TEST_NO_KERNEL)
+    set (_srcs "${UOS_BOARD_UART}")
+    if (_app STREQUAL "smp-test0")
+      list (APPEND _srcs "${UOS_BOARD_MULTICORE}")
+    endif ()
+    set (${_out} "${_srcs}" PARENT_SCOPE)
+    return ()
+  endif ()
+  if (_app STREQUAL "smp-test5")
+    set (_srcs "${UOS_BOARD_RTOS_GLUE}")
+  else ()
+    set (_srcs "${UOS_BOARD_UART}" "${UOS_BOARD_RTOS_GLUE}")
+  endif ()
+  if (NOT "${_app}" IN_LIST _single_core)
+    list (APPEND _srcs "${UOS_BOARD_MULTICORE}")
+  endif ()
+  if ("${_app}" IN_LIST _clock_tests)
+    list (APPEND _srcs "${UOS_BOARD_ADC}")
+  endif ()
+  if ("${_app}" IN_LIST _psram_tests)
+    list (APPEND _srcs "${UOS_BOARD_PSRAM}")
+  endif ()
+  set (${_out} "${_srcs}" PARENT_SCOPE)
+endfunction ()
+
+function (board_test_linker _app _out)
+  if ("${_app}" IN_LIST _psram_tests)
+    set (${_out} "${UOS_BOARD_LINKER_PSRAM}" PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
+function (board_test_defines _app _out)
+  set (_defs "")
+  if ("${_app}" IN_LIST _psram_tests)
+    list (APPEND _defs PICO2_PSRAM=1 PICO2_PSRAM_CS_PIN=0)
+  endif ()
+  if ("${_app}" IN_LIST _clock_tests)
+    list (APPEND _defs PICO2_CLOCK_FROM_SCRATCH)
+    # _200 is the one that does NOT ask for 250 MHz; the other two do.
+    if (NOT _app STREQUAL "smp-test-nested-clock_200")
+      list (APPEND _defs PICO2_ENABLE_250MHZ)
+    endif ()
+  endif ()
+  # The predecessor's smp-test1 Makefile was the only one to pin the system
+  # clock, on both 16 MB boards -- the bring-up test runs the part at 150 MHz.
+  if (_app STREQUAL "smp-test1")
+    list (APPEND _defs PICO2_SYS_CLK_KHZ=150000)
+  endif ()
+  set (${_out} "${_defs}" PARENT_SCOPE)
+endfunction ()
+
+# The four tests that place their interrupt handlers in .data so they run from
+# RAM instead of XIP flash. Their Makefiles compiled main.cpp -- and only
+# main.cpp -- with these two options; see board_test_options() in
+# test/CMakeLists.txt for what each one is for.
+set (_ram_func_tests smp-test-nested
+                     smp-test-nested-clock
+                     smp-test-nested-clock_200
+                     smp-test-nested-clock_250)
+
+function (board_test_options _app _out)
+  if ("${_app}" IN_LIST _ram_func_tests)
+    set (${_out} "-g0;-mlong-calls" PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
+
+# -----------------------------------------------------------------------------
+# The emulated suite.
+#
+# This is the pico2 board plus PSRAM, on the same silicon, so the same two
+# tests that run emulated there run here: sc-test-ko (the single-core
+# kernel-object test) and smp-test1 (the single-core RTOS bring-up). Everything
+# else is HWD_ONLY -- the multicore tests need the SIO block QEMU does not
+# model, and the PSRAM, nested-interrupt and clock-tree tests need the board's
+# own memory map and peripherals.
+set (BOARD_TEST_HWD_ONLY
+     exc-test
+     smp-mat-test
+     smp-test0
+     smp-test2
+     smp-test3
+     smp-test4
+     smp-test5
+     smp-test-ko
+     smp-test-nested
+     smp-test-nested-clock
+     smp-test-nested-clock_200
+     smp-test-nested-clock_250)
+
+# The `qemu` image links the kernel, a generic device with its own vector table
+# and a semihosting console, not the board. See test/pico2/tests.cmake for the
+# same hooks and why each library is there.
+function (board_test_qemu_libs _app _out)
+  set (
+    ${_out}
+    micro-os-plus::cortexm-qemu
+    micro-os-plus::iii-startup
+    micro-os-plus::iii-trace-semihosting
+    micro-os-plus::iii-semihosting
+    micro-os-plus::iii-newlib-reent
+    micro-os-plus::iii-posix-io
+    micro-os-plus::device
+    PARENT_SCOPE
+  )
+endfunction ()
+
+function (board_test_qemu_sources _app _out)
+  # The board's own sources are what run on silicon; the emulated image uses
+  # the pico2 board's semihosting console glue instead (this board shares that
+  # directory -- UOS_BOARD_SRC_DIR is pico2's).
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/src/uart.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/led.cpp"
+               "${UOS_BOARD_SRC_DIR}/qemu/src/clocks.cpp"
+       PARENT_SCOPE)
+endfunction ()
+
+function (board_test_qemu_includes _app _out)
+  set (${_out} "${UOS_BOARD_SRC_DIR}/qemu/include" PARENT_SCOPE)
+endfunction ()
+
+# -----------------------------------------------------------------------------
+# The harness suite.
+#
+# fp-switch, exactly as on the Pico 2: its sources are the harness's
+# tests/sources/fp-switch/ (test::fp-switch), the directory under this board
+# carries only the name, and the verdict wrapper is test/pico2/harness-suite.hpp.
+# See test/pico2/tests.cmake, "The harness suites", for what each part of the
+# interface below is for. It links the board's normal 16 MB map, not the PSRAM
+# one: what it tests is the FPU context switch, not the external memory.
+# -----------------------------------------------------------------------------
+if (NOT TARGET pico2-harness-suite)
+  add_library (pico2-harness-suite INTERFACE)
+  target_compile_definitions (pico2-harness-suite INTERFACE
+                              OS_USE_OS_APP_CONFIG_H UOS_HARNESS_SUITE
+                              _POSIX_C_SOURCE=200809L _GNU_SOURCE)
+  target_include_directories (pico2-harness-suite INTERFACE
+                              "${CMAKE_SOURCE_DIR}/platforms/${PLATFORM_NAME}/include")
+  target_link_libraries (pico2-harness-suite INTERFACE
+                         micro-os-plus::iii-semihosting
+                         micro-os-plus::iii-newlib-reent
+                         micro-os-plus::iii-posix-io)
+  target_link_options (pico2-harness-suite INTERFACE "-Wl,--wrap=os_main")
+endif ()
+
+function (board_test_libs _app _out)
+  if (_app STREQUAL "fp-switch")
+    set (${_out} test::fp-switch pico2-harness-suite PARENT_SCOPE)
+  else ()
+    set (${_out} "" PARENT_SCOPE)
+  endif ()
+endfunction ()
