@@ -362,6 +362,18 @@ namespace os
         ;
       }
 
+      inline constexpr bool __attribute__ ((always_inline))
+      clock_highres::has_hardware_counter (void) noexcept
+      {
+        return false;
+      }
+
+      inline uint64_t __attribute__ ((always_inline))
+      clock_highres::hardware_counter (void) noexcept
+      {
+        return 0;
+      }
+
       inline uint32_t __attribute__ ((always_inline))
       clock_highres::input_clock_frequency_hz (void)
       {
