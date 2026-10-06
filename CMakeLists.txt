@@ -130,4 +130,47 @@ if (NOT TARGET micro-os-plus::soc-rp2350)
                ALIAS micro-os-plus-iii-soc-rp2350-interface)
 endif ()
 
+# The GENERIC Cortex-M33 port, for the emulated pico2 configurations.
+#
+# Same idea as cortexm-qemu, but built for the Cortex-M33 and against the
+# generic M33 core/include (include-m33/), whose SMP branch uses the SSE-200
+# CPUID/MHU instead of the RP2350 SIO. The single-core and SMP variants are
+# selected by the executable's OS_USE_SMP_SCHEDULER define, so this interface
+# deliberately forces neither.
+add_library (micro-os-plus-iii-cortexm-qemu-m33-interface INTERFACE
+             EXCLUDE_FROM_ALL)
+target_include_directories (micro-os-plus-iii-cortexm-qemu-m33-interface
+                            INTERFACE "include-m33")
+target_sources (
+  micro-os-plus-iii-cortexm-qemu-m33-interface
+  INTERFACE "src/rtos/os-core-m33.cpp" src/semihosting-exit.cpp
+            src/libc/getentropy.c
+)
+target_link_libraries (micro-os-plus-iii-cortexm-qemu-m33-interface
+                       INTERFACE micro-os-plus::iii)
+target_compile_definitions (
+  micro-os-plus-iii-cortexm-qemu-m33-interface
+  INTERFACE OS_USE_TRACE_SEMIHOSTING_STDOUT
+)
+target_compile_options (
+  micro-os-plus-iii-cortexm-qemu-m33-interface
+  INTERFACE -mcpu=cortex-m33 -mthumb -mfloat-abi=hard -mfpu=fpv5-sp-d16
+)
+target_link_options (
+  micro-os-plus-iii-cortexm-qemu-m33-interface
+  INTERFACE -mcpu=cortex-m33 -mthumb -mfloat-abi=hard -mfpu=fpv5-sp-d16
+            # The kernel's startup provides _start/main; do not also pull
+            # newlib's crt0.
+            -nostartfiles
+            # NOT nano: the harness suites pull wcsftime (via libstdc++), and
+            # the v8-m.main nano libc omits its swprintf dependency. The 16M
+            # RAM of the an505/an521 map has room for the full libc.
+)
+add_library (micro-os-plus::cortexm-qemu-m33
+             ALIAS micro-os-plus-iii-cortexm-qemu-m33-interface)
+message (
+  VERBOSE
+  "> micro-os-plus::cortexm-qemu-m33 -> micro-os-plus-iii-cortexm-qemu-m33-interface"
+)
+
 # -----------------------------------------------------------------------------
