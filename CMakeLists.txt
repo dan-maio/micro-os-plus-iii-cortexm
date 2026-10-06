@@ -73,4 +73,61 @@ endif()
 add_library(micro-os-plus::iii-cortexm ALIAS micro-os-plus-iii-cortexm-interface)
 message(VERBOSE "> micro-os-plus::iii-cortexm -> micro-os-plus-iii-cortexm-interface")
 
+
+# Dissolved SoC targets: STM32F4xx and RP2350
+# The devices repository was dissolved into the architecture ports.
+if (NOT TARGET micro-os-plus::soc-stm32f411xe)
+  add_library (micro-os-plus-iii-soc-stm32f4xx-common-interface INTERFACE)
+  target_include_directories (
+    micro-os-plus-iii-soc-stm32f4xx-common-interface
+    INTERFACE
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/stm32f4xx/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/stm32f4xx/include/cmsis"
+  )
+  target_sources (
+    micro-os-plus-iii-soc-stm32f4xx-common-interface
+    INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/soc/stm32f4xx/src/system_stm32f4xx.c"
+  )
+
+  add_library (micro-os-plus-iii-soc-stm32f411xe-interface INTERFACE)
+  target_link_libraries (
+    micro-os-plus-iii-soc-stm32f411xe-interface
+    INTERFACE micro-os-plus-iii-soc-stm32f4xx-common-interface
+  )
+  target_sources (
+    micro-os-plus-iii-soc-stm32f411xe-interface
+    INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/soc/stm32f4xx/src/vectors_stm32f411xe.c"
+  )
+  add_library (micro-os-plus::soc-stm32f411xe
+               ALIAS micro-os-plus-iii-soc-stm32f411xe-interface)
+
+  add_library (micro-os-plus-iii-soc-stm32f412rx-interface INTERFACE)
+  target_link_libraries (
+    micro-os-plus-iii-soc-stm32f412rx-interface
+    INTERFACE micro-os-plus-iii-soc-stm32f4xx-common-interface
+  )
+  target_sources (
+    micro-os-plus-iii-soc-stm32f412rx-interface
+    INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/soc/stm32f4xx/src/vectors_stm32f412rx.c"
+  )
+  add_library (micro-os-plus::soc-stm32f412rx
+               ALIAS micro-os-plus-iii-soc-stm32f412rx-interface)
+endif ()
+
+if (NOT TARGET micro-os-plus::soc-rp2350)
+  add_library (micro-os-plus-iii-soc-rp2350-interface INTERFACE)
+  target_include_directories (
+    micro-os-plus-iii-soc-rp2350-interface
+    INTERFACE
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2350/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2350/include/cmsis"
+  )
+  target_sources (
+    micro-os-plus-iii-soc-rp2350-interface
+    INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2350/src/system_rp2350.c"
+  )
+  add_library (micro-os-plus::soc-rp2350
+               ALIAS micro-os-plus-iii-soc-rp2350-interface)
+endif ()
+
 # -----------------------------------------------------------------------------
