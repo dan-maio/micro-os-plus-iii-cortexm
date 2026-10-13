@@ -34,7 +34,8 @@
 # that the split is real.
 #
 # Boards are build configurations of this one port. Pick one with
-# -DBOARD=nucleof411 (default), weactf411 or weactf412.
+# -DBOARD=nucleof411 (default), weactf411, weactf412, pico2, pico2-pizero,
+# pico2-rp2350b-psram or pico (RP2040).
 #
 # Exports: micro-os-plus::cortexm
 # -----------------------------------------------------------------------------
@@ -84,7 +85,7 @@ if (NOT TARGET micro-os-plus::iii)
 endif ()
 
 # -----------------------------------------------------------------------------
-# Dissolved SoC targets: STM32F4xx and RP2350
+# Dissolved SoC targets: STM32F4xx, RP2350 and RP2040
 # The devices repository was dissolved into the architecture ports.
 if (NOT TARGET micro-os-plus::soc-stm32f411xe)
   add_library (micro-os-plus-iii-soc-stm32f4xx-common-interface INTERFACE)
@@ -138,6 +139,24 @@ if (NOT TARGET micro-os-plus::soc-rp2350)
   )
   add_library (micro-os-plus::soc-rp2350
                ALIAS micro-os-plus-iii-soc-rp2350-interface)
+endif ()
+
+# The RP2040 (Raspberry Pi Pico): the CMSIS device header and SystemCoreClock,
+# written from the datasheet as the RP2350's are; no Pico SDK.
+if (NOT TARGET micro-os-plus::soc-rp2040)
+  add_library (micro-os-plus-iii-soc-rp2040-interface INTERFACE)
+  target_include_directories (
+    micro-os-plus-iii-soc-rp2040-interface
+    INTERFACE
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2040/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2040/include/cmsis"
+  )
+  target_sources (
+    micro-os-plus-iii-soc-rp2040-interface
+    INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/soc/rp2040/src/system_rp2040.c"
+  )
+  add_library (micro-os-plus::soc-rp2040
+               ALIAS micro-os-plus-iii-soc-rp2040-interface)
 endif ()
 
 # -----------------------------------------------------------------------------

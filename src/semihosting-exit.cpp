@@ -37,7 +37,7 @@ extern "C" void _Exit (int code) __attribute__ ((noreturn));
 extern "C" void
 _Exit (int code)
 {
-#if defined(HW_BUILD)
+#if defined(HW_BUILD) && !defined(__ARM_ARCH_6M__)
   // On hardware the BKPT is serviced only while OpenOCD is attached, which
   // DHCSR.C_DEBUGEN says. A test that reset the chip (the RP2350 clock tests)
   // has lost it: the BKPT would be a HardFault (HFSR.DEBUGEVT) right after
@@ -45,6 +45,8 @@ _Exit (int code)
   // The same check as the tests' debug-host.h, which this file cannot
   // include: it is built outside the test tree too. QEMU images (no
   // HW_BUILD) are unaffected -- the emulator services semihosting itself.
+  // ARMv6-M (the RP2040's Cortex-M0+) has no software access to DHCSR, so
+  // there the BKPT is issued as it is: its hw.sh keeps OpenOCD attached.
   while ((*reinterpret_cast<volatile unsigned*> (0xE000EDF0u) & 1u) == 0u)
     {
     }

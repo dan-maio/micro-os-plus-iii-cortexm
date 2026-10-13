@@ -145,3 +145,43 @@ enumerate exactly as described under *The USB thread* (config descriptor
 three, and it passed again. The CDC test drives only the MINI-A's
 WS2812 on GPIO20, so on a plain Pico 2 (a single LED on GPIO25) nothing blinks;
 its `[cdc] led ON …` lines report what it sent to the WS2812.
+
+## The `pico` (RP2040) board
+
+The RP2040's USB controller is the one this DCD was written for, so the
+`pico` board uses this directory as it is: TinyUSB, the `cdc/` and `hid/`
+files, and the SDK register headers. Only the shim files that carry an
+address, a reset bit or an IRQ number are its own, in
+`test/boards/pico/usb/pico-shim/`, searched **first**:
+
+| File | RP2040 value |
+|---|---|
+| `pico.h` | no `PICO_RP2350`; `CFG_TUSB_RP2_ERRATA_E2 1` |
+| `pico-shim.c` | TIMER at `0x40054000`; `rp2040_chip_version()` read from `SYSINFO_CHIP_ID` |
+| `hardware/irq.h` | `USBCTRL_IRQ = 5` |
+| `hardware/resets.h` | `RESET_USBCTRL` = bit 24 |
+| `hardware/regs/addressmap.h` | RESETS at `0x4000c000` |
+
+**E2** (B0/B1 silicon: the endpoint ABORT flag is unusable) is on, and
+TinyUSB skips the abort when the chip reports revision 1. The board on the
+desk reports "RP2040 rev 1" (B0/B1). Without E2, the version hard-coded to
+2, one CDC run read the device descriptor, failed the config descriptor, and
+the device stopped answering; with E2 and the real version, both tests pass
+(one run each, so not proven to be the cause). **E5** (enumeration on a busy bus) is NOT applied:
+an SDK-free port of the SDK's `pico_fix` was tried and made enumeration fail
+at the first descriptor read (-71), so it was removed. **E15** matters only
+behind some hubs.
+
+On the `pico` the CDC test lights the onboard LED (GPIO25) instead of the
+WS2812. The descriptors are pico2's, so the gadgets still name themselves
+"Pico2 CDC-ACM" / serial `PICO2-0001`. A line containing Escape ends both
+tests: in the CDC terminal, press Escape **then Return** (the driver hands
+the test whole lines only).
+
+Both tests passed on the `pico` on 2026-10-13 (CDC as `/dev/ttyACM1`, HID
+with `kbd_forward`), through the JTAGprobe over SWD at 15 MHz:
+
+```sh
+xpm run test-smp-test-usb-cdc-acm-hwd --config cortexm-pico-cmake-gcc-debug
+xpm run test-smp-test-usb-hid-hwd     --config cortexm-pico-cmake-gcc-debug
+```
