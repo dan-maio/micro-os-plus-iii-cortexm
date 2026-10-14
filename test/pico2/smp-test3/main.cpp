@@ -4,29 +4,33 @@
  * The pico2 SMP port's cross-core IPI channel is the SIO inter-core FIFO:
  *   port_smp_ipi(cpu) pushes a word; the RECEIVING core's SIO_IRQ_FIFO
  *   (external IRQ 25) drains the FIFO and pends that core's PendSV, so the
- *   receiver reschedules immediately. The kernel does NOT send IPIs by
- *   itself — a thread woken on the other core is only noticed on that core's
- *   next SysTick (up to 1 ms later) unless the poster raises the IPI.
+ *   receiver reschedules immediately. The kernel's thread::resume() sends
+ *   that IPI itself when the resumed thread may not run on the waking core
+ *   (the block was gated on OS_INTEGER_RTOS_PORT_NCPU, never defined, and so
+ *   dead; it is now gated on OS_USE_SMP_SCHEDULER && OS_NCPU > 1).
  *
  * This test proves the IPI path end to end, ISR -> thread, on LED + UART
  * (no SPI): a "pinger" thread pinned to core 0 and a "ponger" pinned to
  * core 1 pass a semaphore ping-pong, and we measure the one-way wake
  * latency with the RP2350 TIMER0 64-bit microsecond counter.
  *
- *   pinger (c0): t_sent = us(); s_ping.post();  [port_smp_ipi(1)]
+ *   pinger (c0): t_sent = us(); s_ping.post();  [+ port_smp_ipi(1) in B]
  *   ponger (c1): s_ping.wait(); lat = us() - t_sent;   (core0 -> core1)
- *                t_sent = us(); s_pong.post(); [port_smp_ipi(0)]
+ *                t_sent = us(); s_pong.post(); [+ port_smp_ipi(0) in B]
  *   pinger (c0): s_pong.wait(); lat = us() - t_sent;   (core1 -> core0)
  *
  * A/B on one run:
- *   phase A (20 rounds)  : the poster does NOT send the IPI; the wake is
- *                          delivered by the receiver's next SysTick — one-way
- *                          latencies up to ~1 ms.
- *   phase B (2000 rounds): the poster sends the IPI; the FIFO IRQ delivers
- *                          the wake in microseconds.
+ *   phase A (20 rounds)  : the kernel's resume() IPI only.
+ *   phase B (2000 rounds): the kernel's IPI plus an explicit one from the
+ *                          poster.
  *
- * RESULT = PASS when every phase-B one-way latency is < 500 us (none was
- * tick-delivered), i.e. the SIO-FIFO IPI is what wakes the threads.
+ * Before phase A the pinger waits for the ponger to run on core 1 (so the
+ * core-1 launch is not timed) and runs 5 unmeasured warm-up rounds: the
+ * first wakes on core 1 run the switch path from cold XIP flash (~0.9 ms,
+ * measured on the Zig port).
+ *
+ * RESULT = PASS when every one-way latency of BOTH phases is < 500 us, i.e.
+ * no wake waited for a tick. The results are also written to semihosting.
  *
  * Output on UART0 @115200; the LED blinks once per round (core 0) and
  * becomes a 200 ms heartbeat after the summary.
@@ -120,22 +124,27 @@ namespace
   }
 
   // ---- Test parameters ----------------------------------------------------
-  constexpr std::uint32_t PH_A_ROUNDS = 20;   // no-IPI control
-  constexpr std::uint32_t PH_B_ROUNDS = 2000; // IPI
+  constexpr std::uint32_t PH_A_ROUNDS = 20;   // kernel resume() IPI only
+  constexpr std::uint32_t PH_B_ROUNDS = 2000; // kernel + explicit IPI
   constexpr std::uint32_t SLOW_US = 500;      // >= this => tick-delivered
+  constexpr std::uint32_t WARMUP_ROUNDS = 5;  // unmeasured, before phase A
 
   // ---- Cross-core handshake ----------------------------------------------
   semaphore_counting s_ping{ "ping", 8, 0 };
   semaphore_counting s_pong{ "pong", 8, 0 };
+  // The ponger runs on core 1: the first timed round must not include the
+  // core-1 launch.
+  semaphore_binary s_ready{ "ready", 0 };
 
   // Sender's departure time (us), read by the receiver right after the wake.
   // Written by one core, read by the other; __DMB() brackets the exchange so
   // the IRQ/FIFO ordering makes the value visible before the wake is posted.
   volatile std::uint32_t g_t_sent = 0;
 
-  // Which phase we are in (0 = A, 1 = B, 2 = done). Set by the pinger only,
-  // read each round by both; the strict ping->pong alternation serializes it.
-  volatile unsigned g_phase = 0;
+  // Which phase we are in (0 = A, 1 = B, 2 = done, 3 = warm-up). Set by the
+  // pinger only, read each round by both; the strict ping->pong alternation
+  // serializes it.
+  volatile unsigned g_phase = 3;
   std::uint32_t g_round = 0; // pinger only
 
   // One-way latency statistics. Each core accumulates ONLY its own leg
@@ -191,6 +200,14 @@ namespace
     uart::write (s);
   }
 
+  // The results go to the UART and, for the runner's log, to semihosting.
+  void
+  out (const char* s)
+  {
+    uart::write (s);
+    hw_result::semi_write0 (s);
+  }
+
   void
   print_stats (const char* leg, const stats& st)
   {
@@ -202,7 +219,8 @@ namespace
         static_cast<unsigned> (st.cnt ? st.sum / st.cnt : 0),
         static_cast<unsigned> (st.max), SLOW_US,
         static_cast<unsigned> (st.slow), static_cast<unsigned> (st.cnt));
-    uart::write (b, static_cast<std::size_t> (n));
+    (void) n;
+    out (b);
   }
 
   bool
@@ -213,25 +231,30 @@ namespace
         b, sizeof (b),
         "-------------------------------------------------\n"
         "cross-core IPI ping-pong : results (LED+UART, no SPI)\n"
-        "  phase A: tick-only wake (no IPI)   %u rounds\n"
-        "  phase B: SIO-FIFO IPI wake         %u rounds\n"
+        "  phase A: kernel resume() IPI       %u rounds\n"
+        "  phase B: kernel + explicit IPI     %u rounds\n"
         "-------------------------------------------------\n",
         PH_A_ROUNDS, PH_B_ROUNDS);
-    uart::write (b, static_cast<std::size_t> (n));
+    (void) n;
+    out (b);
 
     print_stats ("A core0->1", g_leg_c1[0]);
     print_stats ("A core1->0", g_leg_c0[0]);
     print_stats ("B core0->1", g_leg_c1[1]);
     print_stats ("B core1->0", g_leg_c0[1]);
 
-    bool pass = (g_leg_c1[1].max < SLOW_US) && (g_leg_c0[1].max < SLOW_US)
+    bool pass = (g_leg_c1[0].max < SLOW_US) && (g_leg_c0[0].max < SLOW_US)
+                && (g_leg_c1[1].max < SLOW_US) && (g_leg_c0[1].max < SLOW_US)
+                && (g_leg_c1[0].cnt == PH_A_ROUNDS)
+                && (g_leg_c0[0].cnt == PH_A_ROUNDS)
                 && (g_leg_c1[1].cnt == PH_B_ROUNDS)
                 && (g_leg_c0[1].cnt == PH_B_ROUNDS);
     n = std::snprintf (
-        b, sizeof (b), "IPIs sent: %u (all phase B). "
+        b, sizeof (b), "Explicit IPIs sent: %u (phase B). "
                        "Result: %s\n",
-        PH_B_ROUNDS * 2U, pass ? "PASS (IPI wake proven)" : "FAIL");
-    uart::write (b, static_cast<std::size_t> (n));
+        PH_B_ROUNDS * 2U, pass ? "PASS (no tick-delivered wake)" : "FAIL");
+    (void) n;
+    out (b);
     return pass;
   }
 
@@ -244,12 +267,16 @@ namespace
       {
         this_thread::yield ();
       }
+    s_ready.post ();
     for (;;)
       {
         s_ping.wait ();
         std::uint32_t lat = timer_us32 () - g_t_sent;
         unsigned ph = g_phase;
-        acc (g_leg_c1[ph], lat);
+        if (ph < 2)
+          {
+            acc (g_leg_c1[ph], lat);
+          }
         g_t_sent = timer_us32 ();
         __DMB ();
         s_pong.post ();
@@ -274,6 +301,13 @@ namespace
     g_leg_c1[1].min = ~0U;
     g_leg_c0[0].min = ~0U;
     g_leg_c0[1].min = ~0U;
+    s_ready.wait ();
+    for (std::uint32_t i = 0; i < WARMUP_ROUNDS; ++i)
+      {
+        s_ping.post ();
+        s_pong.wait ();
+      }
+    g_phase = 0;
     for (;;)
       {
         unsigned ph = g_phase;
