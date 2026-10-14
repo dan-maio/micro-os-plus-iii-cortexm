@@ -46,8 +46,14 @@
 #endif
 
 // NVIC critical-section masking priority (1..15 for __NVIC_PRIO_BITS == 4).
+// Not for a harness suite: there, leaving it unset is the suite's choice
+// (PRIMASK critical sections). cmsis-os-validator does so on purpose -- its
+// test interrupt (IRQ 0, priority 0) calls the RTOS, which a BASEPRI level
+// forbids ("assertion is_priority_valid() failed" in TC_SignalInterrupts).
+#if !defined(UOS_HARNESS_SUITE)
 #ifndef OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY
 #define OS_INTEGER_RTOS_CRITICAL_SECTION_INTERRUPT_PRIORITY (5)
+#endif
 #endif
 
 // Stacks (the M33 port asserts each thread stack holds two exception frames).
