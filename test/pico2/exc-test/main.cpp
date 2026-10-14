@@ -11,6 +11,14 @@
  *   Phase B — switch to PSP (SPSEL=1) like the RTOS start(): arm PendSV.
  * This tells us whether any non-HardFault entry works, and whether the PSP
  * stack mode matters.
+ *
+ * Phase B gives handler mode its own MSP stack after the switch, as the RTOS
+ * start() does. Leaving MSP == PSP puts the exception frame stacked on the PSP
+ * right under the handler's own stack: any handler that pushes anything (a
+ * frame pointer, a callee-saved register) overwrites the frame and the return
+ * faults (UsageFault INVPC). It passed before only because these handlers
+ * happen to compile to stack-less leaf code; the Zig port, whose handlers push
+ * {r7, lr}, faulted exactly so.
  */
 
 #include <cmsis_device.h>
@@ -63,6 +71,9 @@ _exit (int code)
 
 namespace
 {
+  // Handler-mode (MSP) stack for phase B, 8-byte aligned as AAPCS requires.
+  std::uint32_t g_handler_stack[256] __attribute__ ((aligned (8)));
+
   volatile std::uint32_t g_systick = 0;
   volatile std::uint32_t g_pendsv = 0;
   volatile std::uint32_t g_stage = 0;
@@ -144,10 +155,19 @@ main (void)
 
   // ---- Phase B: switch to PSP (like the RTOS), arm PendSV ----------------
   {
+    // Thread mode moves to the PSP (same address, so the running code is
+    // undisturbed); handler mode then gets its own MSP stack.
     std::uint32_t sp;
     __asm__ volatile ("mrs %0, msp" : "=r" (sp));
     __asm__ volatile ("msr psp, %0" : : "r" (sp));
     __asm__ volatile ("msr control, %0" : : "r" (0x02u));  // SPSEL=1
+    __asm__ volatile ("isb");
+    __asm__ volatile ("msr msp, %0"
+                      :
+                      : "r" (reinterpret_cast<std::uint32_t> (
+                          &g_handler_stack[sizeof (g_handler_stack)
+                                           / sizeof (g_handler_stack[0])]))
+                      : "memory");
     __asm__ volatile ("isb");
   }
 
